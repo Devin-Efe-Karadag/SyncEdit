@@ -11,3 +11,11 @@ void validate(const Operation &o) {
     throw std::runtime_error("invalid operation");
 }
 Crdt::Crdt() { nodes.emplace(Id{}, Element{}); }
+    ++contiguous;
+  }
+}
+void Crdt::drain(Operation first) {
+  std::vector<Operation> ready{first};
+
+  while (!ready.empty()) {
+                                   ? OrderIndex::Key{o.ref, true}
