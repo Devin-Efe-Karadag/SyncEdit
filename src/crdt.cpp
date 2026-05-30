@@ -19,3 +19,5 @@ void Crdt::drain(Operation first) {
 
   while (!ready.empty()) {
                                    ? OrderIndex::Key{o.ref, true}
+        ready.push_back(history.at(w->second));
+      if (!n.deleted) {
