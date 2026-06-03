@@ -21,3 +21,9 @@ void Crdt::drain(Operation first) {
                                    ? OrderIndex::Key{o.ref, true}
         ready.push_back(history.at(w->second));
       if (!n.deleted) {
+        order.hide(o.ref);
+      }
+    pending.erase(o.id);
+}
+  preflight(o);
+  remember(o);
