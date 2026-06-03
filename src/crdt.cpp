@@ -11,6 +11,16 @@ void validate(const Operation &o) {
     throw std::runtime_error("invalid operation");
 }
 Crdt::Crdt() { nodes.emplace(Id{}, Element{}); }
+void Crdt::preflight(const Operation &o) const {
+  auto it = history.find(o.id);
+    if (it->second != o)
+    return;
+  if (history.size() >= 1000000)
+  auto parent = history.find(o.ref);
+      (!parent->second.insert || (o.insert && parent->second.time >= o.time)))
+  auto [begin, end] = waiting.equal_range(o.id);
+    const auto &op = history.at(w->second);
+      throw std::runtime_error("inconsistent buffered dependency");
     ++contiguous;
   }
 }
@@ -19,6 +29,10 @@ void Crdt::drain(Operation first) {
 
   while (!ready.empty()) {
                                    ? OrderIndex::Key{o.ref, true}
+                                   : OrderIndex::Key{following->second, false};
+      size_t pos = order.before(before);
+      order.insert(o.id, before);
+      rope.insert(pos, {o.id, o.value});
         ready.push_back(history.at(w->second));
       if (!n.deleted) {
         order.hide(o.ref);
@@ -26,4 +40,7 @@ void Crdt::drain(Operation first) {
     pending.erase(o.id);
 }
   preflight(o);
+
+  if (history.contains(o.id))
   remember(o);
+  pending.emplace(o.id, o);
