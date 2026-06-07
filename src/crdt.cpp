@@ -12,15 +12,31 @@ void validate(const Operation &o) {
 }
 Crdt::Crdt() { nodes.emplace(Id{}, Element{}); }
 void Crdt::preflight(const Operation &o) const {
+  validate(o);
+
   auto it = history.find(o.id);
+
+  if (it != history.end()) {
     if (it->second != o)
+      throw std::runtime_error("conflicting operation ID");
     return;
+  }
+
   if (history.size() >= 1000000)
+    throw std::runtime_error("operation limit");
   auto parent = history.find(o.ref);
+
+  if (parent != history.end() &&
       (!parent->second.insert || (o.insert && parent->second.time >= o.time)))
+    throw std::runtime_error("invalid dependency");
   auto [begin, end] = waiting.equal_range(o.id);
+
+  for (auto w = begin; w != end; ++w) {
     const auto &op = history.at(w->second);
+
+    if (!o.insert || (op.insert && op.time <= o.time))
       throw std::runtime_error("inconsistent buffered dependency");
+  }
     ++contiguous;
   }
 }
@@ -36,11 +52,16 @@ void Crdt::drain(Operation first) {
         ready.push_back(history.at(w->second));
       if (!n.deleted) {
         order.hide(o.ref);
+        n.deleted = true;
       }
+    }
     pending.erase(o.id);
+  }
 }
+bool Crdt::receive(const Operation &o) {
   preflight(o);
 
   if (history.contains(o.id))
+    return false;
   remember(o);
   pending.emplace(o.id, o);
