@@ -45,6 +45,18 @@ void Crdt::drain(Operation first) {
   std::vector<Operation> ready{first};
 
   while (!ready.empty()) {
+    auto o = ready.back();
+    ready.pop_back();
+
+    if (o.insert) {
+      nodes.emplace(o.id, Element{o, false, {}});
+
+      auto &siblings = nodes.at(o.ref).children;
+
+      auto it = siblings.emplace(o.time, o.id).first;
+
+      auto following = std::next(it);
+      OrderIndex::Key before = following == siblings.end()
                                    ? OrderIndex::Key{o.ref, true}
                                    : OrderIndex::Key{following->second, false};
       size_t pos = order.before(before);

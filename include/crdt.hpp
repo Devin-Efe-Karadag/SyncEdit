@@ -14,6 +14,14 @@ struct Operation {
 
   auto operator<=>(const Operation &) const = default;
 class Crdt {
+  struct Element {
+    Operation op;
+
+    bool deleted = false;
+
+    std::set<std::pair<uint64_t, Id>, std::greater<>> children;
+  };
+
   std::map<Id, Element> nodes;
 
   std::map<Id, Operation> pending;
