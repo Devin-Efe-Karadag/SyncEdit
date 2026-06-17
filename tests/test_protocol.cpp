@@ -8,3 +8,12 @@ template <class F> void rejects(F f) {
     threw = true;
   }
   ce::check(threw, "expected rejection");
+}
+int main() {
+  using namespace ce::wire;
+
+  auto bytes = frame(Type::PING, "");
+
+  for (size_t n = 0; n < bytes.size(); ++n) {
+    auto s = bytes.substr(0, n);
+    ce::check(!take(s), "partial frame");

@@ -18,3 +18,24 @@ int main() {
 
   auto dir = "/tmp/syncedit-storage-" + std::to_string(getpid());
   fs::remove_all(dir);
+
+  std::string original;
+  {
+    Document d(dir, "notes");
+    d.insert(0, 'a');
+    d.insert(1, 'b');
+    original = read_file(dir + "/operations.log");
+  }
+
+  const size_t first = 16 + 72;
+  // Handshake revisions must never make unchanged durable operations unreadable.
+
+  for (unsigned char revision : {1, 2, 3}) {
+    auto old = original.substr(0, 16);
+
+    for (size_t pos = 16; pos < original.size(); pos += 72) {
+      auto payload = original.substr(pos + 12, 56);
+      payload[5] = static_cast<char>(revision);
+      old += disk::record(payload);
+    }
+    atomic_file(dir + "/operations.log", old);

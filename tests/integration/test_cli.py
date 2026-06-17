@@ -9,3 +9,14 @@ binary = os.path.abspath(sys.argv[1])
 with tempfile.TemporaryDirectory() as directory:
     root = pathlib.Path(directory)
     processes = []
+
+    def start(label, port, *args):
+        env = dict(os.environ, SYNCEDIT_TEST_HEADLESS='1',
+                   SYNCEDIT_TEST_DATA_DIR=str(root / label),
+                   SYNCEDIT_TEST_LISTEN='127.0.0.1:' + str(port))
+        p = subprocess.Popen([binary, 'notes', *args], env=env, stdin=subprocess.PIPE,
+                             stderr=subprocess.PIPE, text=True)
+        processes.append(p)
+        lines = [p.stderr.readline() for _ in range(3)]
+        assert p.poll() is None, lines
+        return p, root / label
