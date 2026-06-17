@@ -37,6 +37,7 @@ void Crdt::preflight(const Operation &o) const {
     if (!o.insert || (op.insert && op.time <= o.time))
       throw std::runtime_error("inconsistent buffered dependency");
   }
+  clock = std::max(clock, o.time);
     ++contiguous;
   }
 }

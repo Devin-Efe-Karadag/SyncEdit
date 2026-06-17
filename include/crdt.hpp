@@ -1,3 +1,18 @@
+#pragma once
+#include "order_index.hpp"
+#include "rope.hpp"
+#include <map>
+#include <set>
+namespace ce {
+struct Operation {
+  Id id, ref;
+  uint64_t time = 0;
+
+  char value = 0;
+
+  bool insert = true;
+
+  auto operator<=>(const Operation &) const = default;
 class Crdt {
   std::map<Id, Element> nodes;
 
