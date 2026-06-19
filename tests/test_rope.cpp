@@ -11,3 +11,8 @@ int main() {
 
   for (size_t i = 0; i < 10000; ++i) {
     size_t p = g() % (s.size() + 1);
+
+    char c = g() % 8 == 0 ? '\n' : static_cast<char>('a' + g() % 26);
+    r.insert(p, {{1, i + 1}, c});
+    s.insert(p, 1, c);
+    ce::check(r.at(p).id == ce::Id{1, i + 1}, "ID mapping");

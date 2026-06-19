@@ -1,6 +1,27 @@
 #include "rope.hpp"
 #include <algorithm>
 namespace ce {
+uint64_t Rope::next() {
+  seed ^= seed << 13;
+  seed ^= seed >> 7;
+  seed ^= seed << 17;
+
+  return seed;
+}
+size_t Rope::len(const Ptr &p) { return p ? p->length : 0; }
+size_t Rope::lines(const Ptr &p) { return p ? p->newlines : 0; }
+void Rope::update(Ptr &p) {
+  if (!p)
+    return;
+  p->length = len(p->left) + p->chunk.size() + len(p->right);
+  p->newlines = lines(p->left) + lines(p->right);
+
+  for (auto e : p->chunk)
+    p->newlines += e.value == '\n';
+  if (p->left)
+    p->left->parent = p.get();
+  if (p->right)
+    p->right->parent = p.get();
   p->parent = nullptr;
 }
 Rope::Ptr Rope::node(std::vector<Entry> entries) {

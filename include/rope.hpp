@@ -6,6 +6,11 @@
 namespace ce {
 // Chunked implicit treap. Stable node handles make ID -> rank logarithmic.
 class Rope {
+  struct Node {
+    std::vector<Entry> chunk;
+
+    std::unique_ptr<Node> left, right;
+    Node *parent = nullptr;
   };
   using Ptr = std::unique_ptr<Node>;
   std::map<Id, std::pair<Node *, size_t>> locations;
