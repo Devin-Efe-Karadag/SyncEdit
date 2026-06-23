@@ -99,4 +99,48 @@ std::pair<Rope::Ptr, Rope::Ptr> Rope::split(Ptr p, size_t i) {
   auto k = p->chunk.begin() + static_cast<std::ptrdiff_t>(i - l);
 
   auto a = merge(std::move(p->left), node({p->chunk.begin(), k}));
+
+  auto b = merge(node({k, p->chunk.end()}), std::move(p->right));
+
+  return {std::move(a), std::move(b)};
+}
+Entry Rope::at(size_t i) const {
+  if (i >= size())
+    throw std::out_of_range("rope index");
+  auto p = root.get();
+
+  while (p) {
+    size_t l = len(p->left);
+
+    if (i < l)
+      p = p->left.get();
+    else if (i < l + p->chunk.size())
+      return p->chunk[i - l];
+    else {
+      i -= l + p->chunk.size();
+      p = p->right.get();
+    }
+  }
+  throw std::logic_error("rope metadata");
+}
+bool Rope::append_chunk(Ptr &p, Entry e) {
+  if (!p)
+    return false;
+  if (p->right) {
+    bool added = append_chunk(p->right, e);
+
+    if (added)
+      update(p);
+    return added;
+  }
+
+  if (p->chunk.size() >= 128)
+    return false;
+  locations[e.id] = {p.get(), p->chunk.size()};
+  p->chunk.push_back(e);
+  update(p);
+
+  return true;
+}
+void Rope::insert(size_t i, Entry e) {
   if (i > size() || locations.contains(e.id))

@@ -29,3 +29,22 @@ class Rope {
   static Ptr merge(Ptr a, Ptr b);
 
   std::pair<Ptr, Ptr> split(Ptr p, size_t i);
+
+  static void collect(const Node *p, size_t i, size_t n, std::string &s);
+
+public:
+  size_t size() const { return len(root); }
+  Entry at(size_t i) const;
+  void insert(size_t i, Entry e);
+  void erase(size_t i);
+
+  std::string range(size_t i, size_t n) const;
+
+  size_t index(Id id) const;
+
+  size_t line_of(size_t index) const;
+
+  size_t line_start(size_t line) const;
+  void assign(const std::vector<Entry> &entries);
+};
+} // namespace ce
