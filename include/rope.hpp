@@ -13,6 +13,8 @@ class Rope {
     Node *parent = nullptr;
   };
   using Ptr = std::unique_ptr<Node>;
+  Ptr root;
+
   std::map<Id, std::pair<Node *, size_t>> locations;
   uint64_t seed = 1234567;
   uint64_t next();

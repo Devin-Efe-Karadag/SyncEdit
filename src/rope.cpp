@@ -144,3 +144,36 @@ bool Rope::append_chunk(Ptr &p, Entry e) {
 }
 void Rope::insert(size_t i, Entry e) {
   if (i > size() || locations.contains(e.id))
+    n -= take;
+    i = l;
+  }
+
+  if (n && i < l + c) {
+    size_t start = i - l, take = std::min(n, c - start);
+
+    for (size_t j = 0; j < take; ++j)
+      s += p->chunk[start + j].value;
+    n -= take;
+    i = l + c;
+  }
+
+  if (n)
+    collect(p->right.get(), i - l - c, n, s);
+}
+std::string Rope::range(size_t i, size_t n) const {
+  if (i > size() || n > size() - i)
+    throw std::out_of_range("rope range");
+  std::string s;
+  s.reserve(n);
+  collect(root.get(), i, n, s);
+
+  return s;
+}
+size_t Rope::index(Id id) const {
+  auto it = locations.find(id);
+
+  if (it == locations.end())
+    return size();
+  auto [p, offset] = it->second;
+
+  size_t rank = len(p->left) + offset;

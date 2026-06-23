@@ -16,3 +16,7 @@ int main() {
     r.insert(p, {{1, i + 1}, c});
     s.insert(p, 1, c);
     ce::check(r.at(p).id == ce::Id{1, i + 1}, "ID mapping");
+    ce::check(r.index({1, i + 1}) == p, "reverse mapping");
+
+    if (s.size() > 50 && g() % 2) {
+      p = g() % s.size();
