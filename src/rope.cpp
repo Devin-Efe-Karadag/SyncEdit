@@ -177,3 +177,84 @@ size_t Rope::index(Id id) const {
   auto [p, offset] = it->second;
 
   size_t rank = len(p->left) + offset;
+
+  while (p->parent) {
+    auto parent = p->parent;
+
+    if (parent->right.get() == p)
+      rank += len(parent->left) + parent->chunk.size();
+    p = parent;
+  }
+
+  return rank;
+}
+size_t Rope::line_of(size_t i) const {
+  if (i > size())
+    throw std::out_of_range("line index");
+  size_t result = 0;
+
+  auto p = root.get();
+
+  while (p) {
+    size_t l = len(p->left);
+
+    if (i < l) {
+      p = p->left.get();
+      continue;
+    }
+    result += lines(p->left);
+    i -= l;
+
+    size_t take = std::min(i, p->chunk.size());
+
+    for (size_t j = 0; j < take; ++j)
+      result += p->chunk[j].value == '\n';
+    if (i <= p->chunk.size())
+      break;
+    i -= p->chunk.size();
+    p = p->right.get();
+  }
+
+  return result;
+}
+size_t Rope::line_start(size_t line) const {
+  if (!line)
+    return 0;
+  if (line > lines(root))
+    return size();
+  auto p = root.get();
+
+  size_t offset = 0;
+
+  while (p) {
+    auto l = lines(p->left);
+
+    if (line <= l) {
+      p = p->left.get();
+      continue;
+    }
+    line -= l;
+    offset += len(p->left);
+
+    for (auto e : p->chunk) {
+      ++offset;
+
+      if (e.value == '\n' && !--line)
+        return offset;
+    }
+    p = p->right.get();
+  }
+
+  return size();
+}
+void Rope::assign(const std::vector<Entry> &entries) {
+  root.reset();
+  locations.clear();
+
+  for (size_t i = 0; i < entries.size(); i += 128) {
+    auto end = std::min(entries.size(), i + 128);
+    root = merge(std::move(root), node({entries.begin() + static_cast<std::ptrdiff_t>(i),
+                                        entries.begin() + static_cast<std::ptrdiff_t>(end)}));
+  }
+}
+} // namespace ce

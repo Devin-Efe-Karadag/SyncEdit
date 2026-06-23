@@ -11,6 +11,10 @@ class Rope {
 
     std::unique_ptr<Node> left, right;
     Node *parent = nullptr;
+
+    size_t length = 0, newlines = 0;
+    uint64_t priority;
+    Node(std::vector<Entry> c, uint64_t p) : chunk(std::move(c)), priority(p) {}
   };
   using Ptr = std::unique_ptr<Node>;
   Ptr root;
