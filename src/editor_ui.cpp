@@ -84,3 +84,49 @@ void EditorUI::draw() {
       }
     }
   }
+      A_DIM);
+  put(rows - 1, "Ctrl-S save   Ctrl-P peers   Ctrl-Q close   Ctrl-L log out", A_REVERSE);
+  curs_set(panel ? 0 : 1);
+
+  if (!panel)
+    move(2 + static_cast<int>(line - top), 7 + static_cast<int>(column - horizontal));
+}
+  cursor = doc.crdt.resolve(cursor_anchor);
+  int budget = 128;
+    auto &r = doc.crdt.rope;
+      if (key == 27)
+      if ((key == KEY_UP || key == KEY_PPAGE) && panel_top)
+      if (key == KEY_DOWN || key == KEY_NPAGE)
+      continue;
+    switch (key) {
+      return false;
+      logout_requested = true;
+    case 19:
+      notice = "Snapshot saved";
+    case 16:
+      panel_top = 0;
+    case KEY_LEFT:
+        --cursor;
+    case KEY_RIGHT:
+        ++cursor;
+    case KEY_UP:
+      break;
+      vertical(1);
+    case KEY_PPAGE:
+      break;
+      vertical(std::max(1, LINES - 4));
+    case KEY_BACKSPACE:
+    case 8:
+        doc.erase(--cursor);
+    case KEY_DC:
+        doc.erase(cursor);
+    case KEY_ENTER:
+    case 13:
+      break;
+      continue;
+      if (key < 32 || key > 126)
+      doc.insert(cursor++, static_cast<char>(key));
+    }
+  }
+  return true;
+} // namespace ce
