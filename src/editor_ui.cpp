@@ -17,6 +17,22 @@ EditorUI::EditorUI(Document &d, PeerManager &p, const std::string &n, const std:
   if (notice.empty())
     notice = "Listening: " + peers.listening + " | Ctrl-P: connection details";
 }
+EditorUI::~EditorUI() { endwin(); }
+void EditorUI::vertical(int delta) {
+  auto &r = doc.crdt.rope;
+
+  size_t line = r.line_of(cursor), start = r.line_start(line), column = cursor - start;
+
+  if (delta < 0)
+    line -= std::min(line, static_cast<size_t>(-delta));
+  else
+    line += static_cast<size_t>(delta);
+  start = r.line_start(line);
+
+  size_t end = r.line_start(line + 1);
+
+  if (end > start && r.at(end - 1).value == '\n')
+    --end;
   cursor = start + std::min(column, end - start);
 }
 void EditorUI::draw() {
@@ -84,49 +100,97 @@ void EditorUI::draw() {
       }
     }
   }
+  put(rows - 2, panel ? "Peers  |  Up/Down scroll  |  Ctrl-P or Esc returns to editing" : notice,
       A_DIM);
   put(rows - 1, "Ctrl-S save   Ctrl-P peers   Ctrl-Q close   Ctrl-L log out", A_REVERSE);
   curs_set(panel ? 0 : 1);
 
   if (!panel)
     move(2 + static_cast<int>(line - top), 7 + static_cast<int>(column - horizontal));
+  refresh();
 }
+bool EditorUI::step() {
   cursor = doc.crdt.resolve(cursor_anchor);
+
+  int key;
+
   int budget = 128;
+
+  while (budget-- && (key = getch()) != ERR) {
     auto &r = doc.crdt.rope;
+
+    if (panel && key != 17 && key != 12 && key != 19 && key != 16) {
       if (key == 27)
+        panel = false;
       if ((key == KEY_UP || key == KEY_PPAGE) && panel_top)
+        --panel_top;
       if (key == KEY_DOWN || key == KEY_NPAGE)
+        ++panel_top;
       continue;
-    switch (key) {
-      return false;
-      logout_requested = true;
-    case 19:
-      notice = "Snapshot saved";
-    case 16:
-      panel_top = 0;
-    case KEY_LEFT:
-        --cursor;
-    case KEY_RIGHT:
-        ++cursor;
-    case KEY_UP:
-      break;
-      vertical(1);
-    case KEY_PPAGE:
-      break;
-      vertical(std::max(1, LINES - 4));
-    case KEY_BACKSPACE:
-    case 8:
-        doc.erase(--cursor);
-    case KEY_DC:
-        doc.erase(cursor);
-    case KEY_ENTER:
-    case 13:
-      break;
-      continue;
-      if (key < 32 || key > 126)
-      doc.insert(cursor++, static_cast<char>(key));
     }
+
+    switch (key) {
+    case 17:
+      return false;
+    case 12:
+      logout_requested = true;
+
+      return false;
+    case 19:
+      doc.save(true);
+      notice = "Snapshot saved";
+      continue;
+    case 16:
+      panel = !panel;
+      panel_top = 0;
+      continue;
+    case KEY_LEFT:
+      if (cursor)
+        --cursor;
+      break;
+    case KEY_RIGHT:
+      if (cursor < r.size())
+        ++cursor;
+      break;
+    case KEY_UP:
+      vertical(-1);
+      break;
+    case KEY_DOWN:
+      vertical(1);
+      break;
+    case KEY_PPAGE:
+      vertical(-std::max(1, LINES - 4));
+      break;
+    case KEY_NPAGE:
+      vertical(std::max(1, LINES - 4));
+      break;
+    case KEY_BACKSPACE:
+    case 127:
+    case 8:
+      if (cursor)
+        doc.erase(--cursor);
+      break;
+    case KEY_DC:
+      if (cursor < r.size())
+        doc.erase(cursor);
+      break;
+    case KEY_ENTER:
+    case 10:
+    case 13:
+      doc.insert(cursor++, '\n');
+      break;
+    case KEY_RESIZE:
+      continue;
+    default:
+      if (key < 32 || key > 126)
+        continue;
+      doc.insert(cursor++, static_cast<char>(key));
+      break;
+    }
+    cursor_anchor = doc.crdt.anchor(cursor);
   }
+  draw();
+
   return true;
+}
 } // namespace ce

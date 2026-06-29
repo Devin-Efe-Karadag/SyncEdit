@@ -9,3 +9,10 @@ class EditorUI {
 
   size_t cursor = 0, top = 0, horizontal = 0, panel_top = 0;
   Id cursor_anchor{};
+
+  bool panel = false;
+  void vertical(int delta);
+  void draw();
+
+public:
+  bool logout_requested = false;
