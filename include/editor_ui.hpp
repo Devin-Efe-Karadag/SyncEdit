@@ -16,3 +16,9 @@ class EditorUI {
 
 public:
   bool logout_requested = false;
+  EditorUI(Document &d, PeerManager &p, const std::string &n, const std::string &label);
+  ~EditorUI();
+
+  bool step();
+};
+} // namespace ce
