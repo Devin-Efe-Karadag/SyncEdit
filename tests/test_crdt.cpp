@@ -62,3 +62,14 @@ int main() {
       check(r.rope.index(r.rope.at(i).id) == i, "ID rank after reordered edits");
       check(r.resolve(r.anchor(i)) == i, "cursor rank");
     }
+
+    if (!trial)
+      expected = r.text();
+  }
+  cursor.receive(a);
+  auto anchor = cursor.anchor(1);
+  cursor.receive({{7, 1}, {}, 10, 'z', true}); // zac
+  cursor.receive({{7, 2}, a.id, 11, 'x', true}); // zaxc
+  cursor.receive(d); // zxc; deleted a remains the anchor
+  cursor.receive({{7, 3}, {7, 1}, 12, 0, false});
+  Crdt restored;
