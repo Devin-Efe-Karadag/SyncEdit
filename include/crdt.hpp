@@ -37,3 +37,13 @@ class Crdt {
   void remember(const Operation &o);
 
 public:
+  Rope rope;
+  uint64_t clock = 0;
+  void preflight(const Operation &o) const;
+  bool contains(Id id) const { return history.contains(id); }
+  Vector summary() const { return versions; }
+  Id anchor(size_t cursor) const { return cursor ? rope.at(cursor - 1).id : Id{}; }
+  void restore(const std::vector<Operation> &operations);
+  size_t buffered() const { return pending.size(); }
+};
+} // namespace ce

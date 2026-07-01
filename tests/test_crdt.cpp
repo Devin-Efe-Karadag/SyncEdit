@@ -65,11 +65,21 @@ int main() {
 
     if (!trial)
       expected = r.text();
+    check(r.text() == expected, "shuffled convergence");
   }
+  Crdt cursor;
   cursor.receive(a);
+  cursor.receive(c); // ac
+
   auto anchor = cursor.anchor(1);
   cursor.receive({{7, 1}, {}, 10, 'z', true}); // zac
+  check(cursor.resolve(anchor) == 2, "cursor follows anchor after earlier remote insert");
   cursor.receive({{7, 2}, a.id, 11, 'x', true}); // zaxc
+  check(cursor.resolve(anchor) == 2, "left affinity for same-gap insert");
   cursor.receive(d); // zxc; deleted a remains the anchor
+  check(cursor.resolve(anchor) == 1, "tombstone anchor fallback");
   cursor.receive({{7, 3}, {7, 1}, 12, 0, false});
+  check(cursor.resolve(anchor) == 0, "earlier anchor-neighbor deletion");
   Crdt restored;
+
+  std::vector<Operation> state;
