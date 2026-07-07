@@ -1,3 +1,17 @@
+    inject(operations)
+    wait(lambda:snap(0)==snap(1)==snap(2) and snap(0) and b'Y' in snap(0) and len(snap(0))==30,'reordered dependency forwarding')
+    before=snap(0);inject(operations);time.sleep(1.3);assert snap(0)==snap(1)==snap(2)==before
+    print('PASS reordered dependencies and duplicate forwarding across three processes')
+    with socket.create_connection(('127.0.0.1',ports[0])) as s:
+        s.settimeout(3);s.sendall(frame(1,hello('wrong-document',456)));received=b''
+        while True:
+            data=s.recv(4096)
+            if not data:break
+            received+=data
+        assert frame(8,b'invalid peer message') in received
+    print('PASS mismatched document rejected with ERROR')
+    for bad in [struct.pack('!IHHI',0,3,6,0),struct.pack('!IHHI',0x43454454,99,6,0),struct.pack('!IHHI',0x43454454,3,3,65537)]:
+        with socket.create_connection(('127.0.0.1',ports[0])) as s:
     wait(lambda:snap(0)==snap(1)==snap(2) and len(snap(0))==635,'one-way configured chain forwarding')
     for p in [a,b,c]:stop(p)
     print('PASS A -> B -> C forwarding without an A/C connection')
