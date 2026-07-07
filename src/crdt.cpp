@@ -37,7 +37,18 @@ void Crdt::preflight(const Operation &o) const {
     if (!o.insert || (op.insert && op.time <= o.time))
       throw std::runtime_error("inconsistent buffered dependency");
   }
+
+  if (!versions.contains(o.id.replica) && versions.size() >= 1024)
+    throw std::runtime_error("replica limit");
+}
+void Crdt::remember(const Operation &o) {
+  history.emplace(o.id, o);
   clock = std::max(clock, o.time);
+
+  auto &c = versions[o.id.replica];
+
+  while (history.contains({o.id.replica, c + 1})) {
+    ++c;
     ++contiguous;
   }
 }

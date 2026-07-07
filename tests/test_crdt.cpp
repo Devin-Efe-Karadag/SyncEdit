@@ -83,3 +83,20 @@ int main() {
   Crdt restored;
 
   std::vector<Operation> state;
+
+  for (auto [id, o] : cursor.operations()) {
+    (void)id;
+    state.push_back(o);
+  }
+  restored.restore(state);
+  check(restored.resolve(anchor) == 0, "anchor preserved by checkpoint rebuild");
+  Crdt holes;
+  holes.receive({{99, 2}, {}, 2, 'x', true});
+  check(!holes.settled(), "holes must prevent synced status");
+  check(holes.summary().at(99) == 0, "contiguous vector hole");
+  holes.receive({{99, 1}, {}, 1, 'y', true});
+  check(holes.settled(), "complete history settled");
+  check(holes.summary().at(99) == 2, "hole filled");
+
+  std::cout << "100 shuffled concurrent histories with duplicates passed\n";
+}

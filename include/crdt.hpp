@@ -13,6 +13,8 @@ struct Operation {
   bool insert = true;
 
   auto operator<=>(const Operation &) const = default;
+};
+using Vector = std::map<uint64_t, uint64_t>;
 class Crdt {
   struct Element {
     Operation op;
