@@ -17,3 +17,12 @@ int main() {
   for (size_t n = 0; n < bytes.size(); ++n) {
     auto s = bytes.substr(0, n);
     ce::check(!take(s), "partial frame");
+  }
+
+  auto s = bytes;
+  ce::check(take(s)->type == Type::PING && s.empty(), "complete frame");
+  s = bytes;
+  s[0] = 0;
+  rejects([&] { take(s); });
+  s = bytes;
+  s[4] = 1;
