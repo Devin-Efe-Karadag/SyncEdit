@@ -18,3 +18,13 @@ class PeerManager {
 
   struct Target {
     std::string address;
+    Clock::time_point retry = Clock::now();
+
+    int backoff = 1;
+    uint64_t replica = 0;
+  };
+  Document &doc;
+
+  std::string name;
+
+  int ep = -1, listener = -1;

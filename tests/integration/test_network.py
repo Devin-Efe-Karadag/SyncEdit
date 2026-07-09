@@ -12,6 +12,14 @@
     print('PASS mismatched document rejected with ERROR')
     for bad in [struct.pack('!IHHI',0,3,6,0),struct.pack('!IHHI',0x43454454,99,6,0),struct.pack('!IHHI',0x43454454,3,3,65537)]:
         with socket.create_connection(('127.0.0.1',ports[0])) as s:
+            s.settimeout(3);s.sendall(bad)
+            while s.recv(4096):pass
+        assert a.poll() is None
+    print('PASS live malformed magic, version and oversized frame rejection')
+    stop(b,True);b=start(1,[0,2]);wait(lambda:snap(1)==before,'restart replay')
+    stop(c)
+    command(a,'insert 0 '+('q'*600))
+    wait(lambda:snap(0)==snap(1) and len(snap(0))==630,'edits while C is absent')
     wait(lambda:snap(0)==snap(1)==snap(2) and len(snap(0))==635,'one-way configured chain forwarding')
     for p in [a,b,c]:stop(p)
     print('PASS A -> B -> C forwarding without an A/C connection')

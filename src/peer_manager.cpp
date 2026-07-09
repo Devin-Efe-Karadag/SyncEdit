@@ -119,6 +119,17 @@ void PeerManager::queue(Connection &c, wire::Type t, const std::string &s) {
   }
   c.output += b;
   watch(c);
+        std::erase_if(visible,
+      visible.erase(std::remove(visible.begin(), visible.end(), connection.remote_endpoint),
+      queue(connection, wire::Type::PEER_LIST, wire::peers(visible));
+  }
+void PeerManager::broadcast(const Operation &o, int except) {
+    if (fd != except && c.ready && !c.dead) {
+      queue(c, wire::Type::OP_BATCH, wire::operations(std::vector<Operation>{o}));
+}
+  std::vector<Operation> batch;
+  for (const auto &[replica, local] : doc.crdt.summary()) {
+    auto known = v.find(replica);
     uint64_t counter = known == v.end() ? 0 : known->second;
 
     if (counter == std::numeric_limits<uint64_t>::max())
