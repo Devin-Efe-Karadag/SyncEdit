@@ -119,6 +119,13 @@ void PeerManager::queue(Connection &c, wire::Type t, const std::string &s) {
   }
   c.output += b;
   watch(c);
+  for (auto &[fd, connection] : connections) {
+    (void)fd;
+
+    if (connection.ready && !connection.dead) {
+      auto visible = addresses;
+
+      if (!connection.remote_host.starts_with("127."))
         std::erase_if(visible,
       visible.erase(std::remove(visible.begin(), visible.end(), connection.remote_endpoint),
       queue(connection, wire::Type::PEER_LIST, wire::peers(visible));
@@ -171,6 +178,25 @@ void PeerManager::message(Connection &c, const wire::Frame &f) {
       }
     for (auto &[fd, other] : connections) {
       if (fd == c.fd || other.dead || !other.ready || other.replica != h.replica)
+        continue;
+      bool prefer = doc.store.replica < h.replica;
+
+      if (c.outbound == prefer && other.outbound != prefer)
+        other.dead = true;
+      else {
+        c.dead = true;
+        return;
+      }
+    }
+    c.ready = true;
+
+    if (f.type == Type::HELLO)
+      queue(c, Type::HELLO_ACK,
+            wire::hello({name, doc.store.replica, doc.store.display_name, listen_port,
+                         doc.crdt.summary()}));
+    missing(c, h.summary);
+    announce();
+    return;
             break;
           c.seen = now;
           if (c.input.size() > wire::max_payload + 12 + sizeof b)
