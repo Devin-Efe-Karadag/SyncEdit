@@ -119,6 +119,54 @@ void PeerManager::queue(Connection &c, wire::Type t, const std::string &s) {
   }
   c.output += b;
   watch(c);
+}
+void PeerManager::add(int fd, bool out, bool connecting, const std::string &address) {
+  Connection c;
+  c.fd = fd;
+  c.outbound = out;
+  c.connecting = connecting;
+  c.address = address;
+  epoll_event e{};
+  e.events = EPOLLIN | EPOLLRDHUP;
+  e.data.fd = fd;
+
+  if (epoll_ctl(ep, EPOLL_CTL_ADD, fd, &e) < 0) {
+    close(fd);
+    throw std::runtime_error("epoll add");
+  }
+  connections.emplace(fd, std::move(c));
+
+  auto &v = connections.at(fd);
+  queue(v, wire::Type::HELLO,
+        wire::hello(
+            {name, doc.store.replica, doc.store.display_name, listen_port, doc.crdt.summary()}));
+}
+bool PeerManager::remember(const std::string &address) {
+  auto parsed = endpoint(address);
+
+  auto host = ntohl(parsed.sin_addr.s_addr);
+
+  if (!host || host >= 0xe0000000U)
+    throw std::runtime_error("invalid peer address");
+  if (ntohs(parsed.sin_port) == listen_port) {
+    ifaddrs *interfaces = nullptr;
+    check(getifaddrs(&interfaces) == 0, "local interfaces");
+
+    bool self = false;
+
+    for (auto *it = interfaces; it; it = it->ifa_next)
+      if (it->ifa_addr && it->ifa_addr->sa_family == AF_INET &&
+          reinterpret_cast<sockaddr_in *>(it->ifa_addr)->sin_addr.s_addr == parsed.sin_addr.s_addr)
+        self = true;
+    freeifaddrs(interfaces);
+
+    if (self)
+      return false;
+  }
+
+  for (const auto &target : targets)
+    if (target.address == address)
+      return false;
   for (auto &[fd, connection] : connections) {
     (void)fd;
 

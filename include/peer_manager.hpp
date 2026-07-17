@@ -47,3 +47,14 @@ class PeerManager {
 
   bool active(const Target &target) const;
   void announce();
+
+public:
+  std::string listening;
+
+  std::string storage_path;
+
+  std::string last_error;
+  PeerManager(Document &d, const std::string &name, const std::string &listen,
+              const std::vector<std::string> &peers,
+
+              std::function<void(const std::vector<std::string> &)> save = {});
