@@ -38,3 +38,12 @@ class PeerManager {
   std::function<void(const std::vector<std::string> &)> save_peers;
   void watch(Connection &c);
   void add(int fd, bool outbound, bool connecting, const std::string &address);
+  void queue(Connection &c, wire::Type t, const std::string &s);
+  void message(Connection &c, const wire::Frame &f);
+  void missing(Connection &c, const Vector &v);
+  void broadcast(const Operation &o, int except);
+
+  bool remember(const std::string &address);
+
+  bool active(const Target &target) const;
+  void announce();

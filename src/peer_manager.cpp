@@ -127,15 +127,28 @@ void PeerManager::queue(Connection &c, wire::Type t, const std::string &s) {
 
       if (!connection.remote_host.starts_with("127."))
         std::erase_if(visible,
+                      [](const std::string &address) { return address.starts_with("127."); });
       visible.erase(std::remove(visible.begin(), visible.end(), connection.remote_endpoint),
+                    visible.end());
       queue(connection, wire::Type::PEER_LIST, wire::peers(visible));
+    }
   }
-void PeerManager::broadcast(const Operation &o, int except) {
-    if (fd != except && c.ready && !c.dead) {
-      queue(c, wire::Type::OP_BATCH, wire::operations(std::vector<Operation>{o}));
 }
+void PeerManager::broadcast(const Operation &o, int except) {
+  for (auto &[fd, c] : connections)
+    if (fd != except && c.ready && !c.dead) {
+      c.synced = false;
+      queue(c, wire::Type::OP_BATCH, wire::operations(std::vector<Operation>{o}));
+    }
+}
+void PeerManager::missing(Connection &c, const Vector &v) {
   std::vector<Operation> batch;
+
+  const auto &history = doc.crdt.operations();
+
   for (const auto &[replica, local] : doc.crdt.summary()) {
+    (void)local;
+
     auto known = v.find(replica);
     uint64_t counter = known == v.end() ? 0 : known->second;
 
@@ -197,53 +210,235 @@ void PeerManager::message(Connection &c, const wire::Frame &f) {
     missing(c, h.summary);
     announce();
     return;
-            break;
-          c.seen = now;
-          if (c.input.size() > wire::max_payload + 12 + sizeof b)
-          while (auto f = wire::take(c.input)) {
-            if (c.dead)
-          }
-            break;
-      }
-        auto r = send(fd, c.output.data(), c.output.size(), MSG_NOSIGNAL);
-          c.output.erase(0, static_cast<size_t>(r));
-          c.dead = true;
-      if (events[i].events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP))
-      watch(c);
-      throw; // A failed durable write must stop the editor, never be
-    } catch (const std::exception &e) {
-                             // retransmitted.
-      auto sent = send(fd, error.data(), error.size(), MSG_NOSIGNAL);
-      c.dead = true;
+  case Type::PING:
+    if (!f.payload.empty())
+      throw std::runtime_error("bad ping");
+    queue(c, Type::PONG, "");
+    break;
+  case Type::PONG:
+    if (!f.payload.empty())
+      throw std::runtime_error("bad pong");
+    break;
+  case Type::PEER_LIST: {
+    auto addresses = wire::peers(f.payload);
+
+    for (const auto &address : addresses)
+      endpoint(address);
+    for (const auto &address : addresses) {
+      if (address.starts_with("127.") && !c.remote_host.starts_with("127."))
+        continue;
+      remember(address);
+    }
+    break;
   }
-    tick = now;
-      (void)fd;
-        c.dead = true;
-      }
-        queue(c, wire::Type::SYNC_REQUEST, wire::summary(doc.crdt.summary()));
-      }
+  case Type::ERROR:
+    throw std::runtime_error("remote protocol error");
+  default:
+    throw std::runtime_error("unexpected message");
   }
-    if (it->second.dead) {
-      check(close(it->first) == 0, "close peer");
-    } else
-  }
-size_t PeerManager::count() const {
-                       [](const auto &entry) { return entry.second.ready && !entry.second.dead; });
-bool PeerManager::synced() const {
-           const auto &c = entry.second;
-         });
-bool PeerManager::active(const Target &target) const {
-    const auto &c = entry.second;
-           (c.address == target.address || (target.replica && c.replica == target.replica));
 }
-  std::vector<std::string> s;
-  s.push_back("Storage: " + storage_path);
-    s.push_back("Invite: use --join <this machine's IPv4>:" +
-  for (const auto &[fd, c] : connections) {
-    if (!c.dead)
-                  (c.ready ? (c.synced ? "Synced" : "Syncing") : "Connecting") + "  |  " +
+void PeerManager::poll(int timeout) {
+  auto now = Clock::now();
+
+  for (auto &t : targets) {
+    if (active(t) || now < t.retry || connections.size() >= 64)
+      continue;
+    t.retry = now + std::chrono::seconds(t.backoff);
+    t.backoff = std::min(30, t.backoff * 2);
+
+    int fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+    check(fd >= 0, "client socket");
+
+    auto a = endpoint(t.address);
+
+    int r = connect(fd, reinterpret_cast<sockaddr *>(&a), sizeof a);
+
+    if (r < 0 && errno != EINPROGRESS) {
+      check(close(fd) == 0, "close failed connection");
+      continue;
+    }
+    add(fd, true, r < 0, t.address);
   }
+  epoll_event events[64];
+
+  int n = epoll_wait(ep, events, 64, timeout);
+
+  if (n < 0 && errno == EINTR)
+    return;
+  check(n >= 0, "epoll_wait");
+
+  for (int i = 0; i < n; ++i) {
+    int fd = events[i].data.fd;
+
+    if (fd == listener) {
+      for (int j = 0; j < 64; ++j) {
+        int client = accept4(listener, nullptr, nullptr, SOCK_NONBLOCK | SOCK_CLOEXEC);
+
+        if (client < 0) {
+          if (errno == EAGAIN || errno == EWOULDBLOCK)
+            break;
+          if (errno == EINTR)
+            continue;
+          check(false, "accept");
+        }
+
+        if (connections.size() >= 64) {
+          check(close(client) == 0, "connection limit close");
+          continue;
+        }
+        add(client, false, false, "incoming");
+      }
+      continue;
+    }
+
+    auto it = connections.find(fd);
+
+    if (it == connections.end())
+      continue;
+    auto &c = it->second;
+
+    if (c.dead)
+      continue;
+    try {
+      if (c.connecting && (events[i].events & EPOLLOUT)) {
+        int err = 0;
+        socklen_t len = sizeof err;
+        check(getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len) == 0, "connect status");
+
+        if (err)
+          throw std::runtime_error("connect failed");
+        c.connecting = false;
+      }
+
+      if (events[i].events & EPOLLIN) {
+        for (int j = 0; j < 16; ++j) {
+          char b[8192];
+
+          auto r = recv(fd, b, sizeof b, 0);
+
+          if (r < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+              break;
+            if (errno == EINTR)
+              continue;
+            throw std::runtime_error("receive failed");
+          }
+
+          if (!r) {
+            c.dead = true;
+            break;
+          }
+          c.seen = now;
+          c.input.append(b, static_cast<size_t>(r));
+
+          if (c.input.size() > wire::max_payload + 12 + sizeof b)
+            throw std::runtime_error("input limit");
+          while (auto f = wire::take(c.input)) {
+            message(c, *f);
+
+            if (c.dead)
+              break;
+          }
+
+          if (c.dead)
+            break;
+        }
+      }
+
+      if (!c.connecting && !c.dead && (events[i].events & EPOLLOUT) && !c.output.empty()) {
+        auto r = send(fd, c.output.data(), c.output.size(), MSG_NOSIGNAL);
+
+        if (r > 0)
+          c.output.erase(0, static_cast<size_t>(r));
+        else if (r < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
+          c.dead = true;
+      }
+
+      if (events[i].events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP))
+        c.dead = true;
+      watch(c);
+    } catch (const StorageError &) {
+      throw; // A failed durable write must stop the editor, never be
+             // acknowledged.
+    } catch (const std::exception &e) {
+      last_error = e.what(); // Best-effort ERROR, then close: errors are never
+                             // retransmitted.
+      auto error = wire::frame(wire::Type::ERROR, "invalid peer message");
+
+      auto sent = send(fd, error.data(), error.size(), MSG_NOSIGNAL);
+      (void)sent;
+      c.dead = true;
+    }
+  }
+
+  if (now - tick >= std::chrono::seconds(1)) {
+    tick = now;
+
+    for (auto &[fd, c] : connections) {
+      (void)fd;
+
+      if (now - c.seen > std::chrono::seconds(15)) {
+        c.dead = true;
+        continue;
+      }
+
+      if (c.ready && !c.dead) {
+        queue(c, wire::Type::SYNC_REQUEST, wire::summary(doc.crdt.summary()));
+        queue(c, wire::Type::PING, "");
+      }
+    }
+  }
+
+  for (auto it = connections.begin(); it != connections.end();) {
+    if (it->second.dead) {
+      check(epoll_ctl(ep, EPOLL_CTL_DEL, it->first, nullptr) == 0, "epoll delete");
+      check(close(it->first) == 0, "close peer");
+      it = connections.erase(it);
+    } else
+      ++it;
+  }
+}
+size_t PeerManager::count() const {
+  return std::count_if(connections.begin(), connections.end(),
+                       [](const auto &entry) { return entry.second.ready && !entry.second.dead; });
+}
+bool PeerManager::synced() const {
+  return count() && std::none_of(connections.begin(), connections.end(), [](const auto &entry) {
+           const auto &c = entry.second;
+
+           return c.ready && !c.dead && !c.synced;
+         });
+}
+bool PeerManager::active(const Target &target) const {
+  return std::any_of(connections.begin(), connections.end(), [&](const auto &entry) {
+    const auto &c = entry.second;
+
+    return !c.dead &&
+           (c.address == target.address || (target.replica && c.replica == target.replica));
+  });
+}
+std::vector<std::string> PeerManager::status() const {
+  std::vector<std::string> s;
+  s.push_back("Listening: " + listening);
+  s.push_back("Storage: " + storage_path);
+
+  if (listener >= 0)
+    s.push_back("Invite: use --join <this machine's IPv4>:" +
+                listening.substr(listening.rfind(':') + 1));
+  for (const auto &[fd, c] : connections) {
+    (void)fd;
+
+    if (!c.dead)
+      s.push_back((c.peer_name.empty() ? "Peer" : c.peer_name) + "  |  " +
+                  (c.ready ? (c.synced ? "Synced" : "Syncing") : "Connecting") + "  |  " +
+                  (c.remote_endpoint.empty() ? c.address : c.remote_endpoint));
+  }
+
+  for (const auto &t : targets)
     if (!active(t))
+      s.push_back(t.address + " offline / reconnecting");
   if (!last_error.empty())
+    s.push_back("Last event: " + last_error);
   return s;
+}
 } // namespace ce
