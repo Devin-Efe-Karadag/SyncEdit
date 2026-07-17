@@ -167,6 +167,35 @@ bool PeerManager::remember(const std::string &address) {
   for (const auto &target : targets)
     if (target.address == address)
       return false;
+  if (targets.size() >= 64)
+    return false;
+  targets.push_back({address, Clock::now(), 1, 0});
+
+  if (save_peers) {
+    std::vector<std::string> addresses;
+
+    for (const auto &target : targets)
+      addresses.push_back(target.address);
+    save_peers(addresses);
+  }
+
+  return true;
+}
+void PeerManager::announce() {
+  std::vector<std::string> addresses;
+  // Introduce only peers whose document handshake has succeeded.
+
+  for (const auto &[fd, connection] : connections) {
+    (void)fd;
+
+    if (addresses.size() < 64 && connection.ready && !connection.dead &&
+        !connection.remote_endpoint.empty() &&
+
+        std::find(addresses.begin(), addresses.end(), connection.remote_endpoint) ==
+            addresses.end())
+      addresses.push_back(connection.remote_endpoint);
+  }
+
   for (auto &[fd, connection] : connections) {
     (void)fd;
 
@@ -258,6 +287,27 @@ void PeerManager::message(Connection &c, const wire::Frame &f) {
     missing(c, h.summary);
     announce();
     return;
+  }
+
+  if (!c.ready)
+    throw std::runtime_error("handshake required");
+  switch (f.type) {
+  case Type::OP_BATCH:
+    for (auto o : wire::operations(f.payload))
+      if (doc.receive(o)) {
+        c.synced = false;
+        broadcast(o, c.fd);
+      }
+    queue(c, Type::SYNC_REQUEST, wire::summary(doc.crdt.summary()));
+    break;
+  case Type::SYNC_REQUEST:
+    missing(c, wire::summary(f.payload));
+    break;
+  case Type::SYNC_RESPONSE: {
+    auto v = wire::summary(f.payload);
+    c.synced = v == doc.crdt.summary() && doc.crdt.settled();
+    break;
+  }
   case Type::PING:
     if (!f.payload.empty())
       throw std::runtime_error("bad ping");

@@ -58,3 +58,13 @@ public:
               const std::vector<std::string> &peers,
 
               std::function<void(const std::vector<std::string> &)> save = {});
+  ~PeerManager();
+  void poll(int timeout);
+
+  std::vector<std::string> status() const;
+
+  size_t count() const;
+
+  bool synced() const;
+};
+} // namespace ce
