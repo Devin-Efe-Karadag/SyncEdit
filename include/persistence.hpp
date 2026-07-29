@@ -11,3 +11,5 @@ constexpr size_t max_file = 128 * 1024 * 1024;
 uint32_t crc32(std::string_view bytes);
 std::string record(const std::string &payload);
 } // namespace disk
+class Persistence {
+  std::string dir, document;

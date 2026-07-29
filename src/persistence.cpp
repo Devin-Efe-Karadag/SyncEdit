@@ -48,6 +48,21 @@ Persistence::Persistence(const std::string &d, const std::string &doc,
           throw StorageError("invalid display name");
     } else {
     }
+  check(logfd >= 0, "log open");
+}
+  if (logfd >= 0)
+  if (lockfd >= 0)
+}
+  struct stat st{};
+  if (st.st_size < 0 || static_cast<uint64_t>(st.st_size) > disk::max_file)
+  uint64_t end = static_cast<uint64_t>(st.st_size);
+  while (offset < end) {
+    if (header.size() < 12)
+    auto magic = h.number(4), length = h.number(4), crc = h.number(4);
+      throw StorageError("corrupt log header at " + std::to_string(offset));
+    auto footer = read_at(logfd, offset + 12 + length, 4);
+      throw StorageError("log checksum mismatch at " + std::to_string(offset));
+    for (auto o : wire::operations(frame->payload)) {
       c.restore(ops);
       start = covered;
       boundary_crc = static_cast<uint32_t>(boundary);
