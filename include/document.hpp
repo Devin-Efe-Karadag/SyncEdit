@@ -19,3 +19,10 @@ public:
   void erase(size_t pos);
   void save(bool force_checkpoint = false) {
     store.snapshot(crdt.text());
+    store.checkpoint(crdt, force_checkpoint);
+  }
+
+private:
+  void local(Operation o);
+};
+} // namespace ce

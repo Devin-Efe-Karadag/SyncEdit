@@ -35,3 +35,14 @@ Persistence::Persistence(const std::string &d, const std::string &doc,
           throw StorageError("invalid display name");
     } else {
     }
+      c.restore(ops);
+      start = covered;
+      boundary_crc = static_cast<uint32_t>(boundary);
+      checkpoint_count = ops.size();
+      used_checkpoint = true;
+    } catch (const std::exception &) {
+      recovery_note = "Checkpoint rejected; verified full log replay used";
+      start = 16;
+      checkpoint_count = 0;
+      used_checkpoint = false;
+    }

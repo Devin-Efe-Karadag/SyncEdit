@@ -1,3 +1,28 @@
+#include "document.hpp"
+namespace ce {
+bool Document::receive(const Operation &o) {
+  crdt.preflight(o);
+
+  if (crdt.contains(o.id)) {
+    crdt.receive(o);
+
+    return false;
+  }
+  try {
+    store.append(o);
+  } catch (const std::exception &e) {
+    throw StorageError(e.what());
+  }
+  crdt.receive(o);
+
+  return true;
+}
+void Document::local(Operation o) {
+  receive(o);
+  store.counter(o.id.counter + 1);
+
+  if (broadcast)
+    broadcast(o);
 }
 void Document::insert(size_t p, char c) {
   if (p > crdt.rope.size())
