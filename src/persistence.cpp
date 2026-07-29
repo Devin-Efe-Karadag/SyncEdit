@@ -1,3 +1,16 @@
+uint32_t crc32(std::string_view bytes) {
+  static constexpr auto table = [] {
+    std::array<uint32_t, 256> t{};
+
+    for (uint32_t i = 0; i < 256; ++i) {
+      auto c = i;
+        c = (c >> 1) ^ ((c & 1) ? 0xedb88320U : 0);
+    return t;
+  }();
+    crc = table[(crc ^ ch) & 255] ^ (crc >> 8);
+std::string record(const std::string &p) {
+  wire::Writer w;
+  w.number(crc32(w.data), 4);
   w.number(generation, 8);
 
   return w.data;
