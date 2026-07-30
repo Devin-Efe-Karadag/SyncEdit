@@ -17,3 +17,6 @@ class Persistence {
   int lockfd = -1, logfd = -1;
   uint64_t generation = 0, offset = 16;
   uint32_t boundary_crc = 0;
+
+  size_t checkpoint_count = 0;
+  void open_log();
