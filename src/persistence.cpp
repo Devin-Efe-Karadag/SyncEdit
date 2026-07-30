@@ -50,18 +50,37 @@ Persistence::Persistence(const std::string &d, const std::string &doc,
     }
   check(logfd >= 0, "log open");
 }
+Persistence::~Persistence() {
   if (logfd >= 0)
+    close(logfd);
   if (lockfd >= 0)
+    close(lockfd);
 }
+void Persistence::replay_records(Crdt &c, uint64_t start) {
   struct stat st{};
+  check(fstat(logfd, &st) == 0, "stat log");
+
   if (st.st_size < 0 || static_cast<uint64_t>(st.st_size) > disk::max_file)
+    throw StorageError("log size limit");
   uint64_t end = static_cast<uint64_t>(st.st_size);
+  offset = start;
+
   while (offset < end) {
+    auto header = read_at(logfd, offset, 12);
+
     if (header.size() < 12)
+      break;
+    wire::Reader h{header};
+
     auto magic = h.number(4), length = h.number(4), crc = h.number(4);
+
+    if (magic != 0x43454c52 || crc != disk::crc32(std::string_view(header).substr(0, 8)) ||
       throw StorageError("corrupt log header at " + std::to_string(offset));
+    if (length + 16 > end - offset)
     auto footer = read_at(logfd, offset + 12 + length, 4);
+    wire::Reader f{footer};
       throw StorageError("log checksum mismatch at " + std::to_string(offset));
+    auto frame = wire::take(payload, true);
     for (auto o : wire::operations(frame->payload)) {
       c.restore(ops);
       start = covered;

@@ -13,3 +13,7 @@ std::string record(const std::string &payload);
 } // namespace disk
 class Persistence {
   std::string dir, document;
+
+  int lockfd = -1, logfd = -1;
+  uint64_t generation = 0, offset = 16;
+  uint32_t boundary_crc = 0;
