@@ -89,3 +89,40 @@ bool Crdt::receive(const Operation &o) {
     return false;
   remember(o);
   pending.emplace(o.id, o);
+    drain(o);
+    waiting.emplace(o.ref, o.id);
+}
+void Crdt::restore(const std::vector<Operation> &ops) {
+  // operations remain available for deduplication and anti-entropy.
+  if (ops.size() > 1000000)
+  for (auto o : ops) {
+    if (!fresh.history.emplace(o.id, o).second)
+    fresh.clock = std::max(fresh.clock, o.time);
+  for (const auto &[id, o] : fresh.history) {
+    if (id.counter == c + 1) {
+      ++fresh.contiguous;
+    auto p = fresh.history.find(o.ref);
+      throw std::runtime_error("invalid checkpoint dependency");
+  if (fresh.versions.size() > 1024)
+  std::vector<Operation> sorted = ops;
+  });
+    if (o.insert) {
+        fresh.nodes.emplace(o.id, Element{o, false, {}});
+      } else {
+        fresh.waiting.emplace(o.ref, o.id);
+    }
+    if (!o.insert) {
+        fresh.nodes.at(o.ref).deleted = true;
+        fresh.pending.emplace(o.id, o);
+      }
+  std::vector<OrderIndex::Marker> markers;
+  std::vector<OrderIndex::Key> stack{{Id{}, false}};
+    auto key = stack.back();
+    const auto &n = fresh.nodes.at(key.first);
+    markers.push_back({key, show});
+      visible.push_back({key.first, n.op.value});
+      stack.push_back({key.first, true});
+        stack.push_back({it->second, false});
+  }
+  fresh.rope.assign(visible);
+}

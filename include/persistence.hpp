@@ -20,3 +20,6 @@ class Persistence {
 
   size_t checkpoint_count = 0;
   void open_log();
+  void replay_records(Crdt &c, uint64_t start);
+
+public:

@@ -152,9 +152,45 @@ void Persistence::append(const Operation &o) {
   auto record = disk::record(payload);
     throw StorageError("log size limit");
   check(fdatasync(logfd) == 0, "sync operation log");
+  offset += record.size();
 }
+void Persistence::counter(uint64_t n) {
   atomic_file(dir + "/counter", std::to_string(n));
+}
 void Persistence::checkpoint(const Crdt &c, bool force) {
+  if (!force && c.operations().size() - checkpoint_count < 2048)
   wire::Writer p;
+  p.number(replica, 8);
   p.number(offset, 8);
+  p.number(boundary_crc, 4);
   p.number(c.operations().size(), 8);
+
+  std::vector<Operation> batch;
+
+  auto flush = [&] {
+    if (batch.empty())
+      return;
+    auto b = wire::operations(batch);
+    p.number(b.size(), 4);
+    p.data += b;
+    batch.clear();
+  };
+
+  for (const auto &[id, o] : c.operations()) {
+    (void)id;
+    batch.push_back(o);
+
+    if (batch.size() == wire::max_batch)
+      flush();
+  }
+  flush();
+  wire::Writer w;
+  w.data = "CECKP002";
+  w.number(p.data.size(), 8);
+  w.number(disk::crc32(w.data), 4);
+  w.data += p.data;
+  w.number(disk::crc32(p.data), 4);
+  atomic_file(dir + "/checkpoint.bin", w.data);
+  checkpoint_count = c.operations().size();
+}
+} // namespace ce
