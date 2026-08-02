@@ -23,3 +23,6 @@ class Persistence {
   void replay_records(Crdt &c, uint64_t start);
 
 public:
+  uint64_t replica = 0, next = 1;
+
+  std::string display_name;

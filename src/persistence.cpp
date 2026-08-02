@@ -120,17 +120,74 @@ void Persistence::replay_records(Crdt &c, uint64_t start) {
       throw StorageError("log checksum mismatch at " + std::to_string(offset));
     auto frame = wire::take(payload, true);
     for (auto o : wire::operations(frame->payload)) {
+      c.receive(o);
+      ++replayed_operations;
     }
+    offset += length + 16;
+  }
+
+  if (offset != end) {
+    check(ftruncate(logfd, static_cast<off_t>(offset)) == 0, "repair interrupted log tail");
+    check(fsync(logfd) == 0, "sync tail repair");
+    recovery_note = "Recovered incomplete final log record";
+  }
+}
+void Persistence::replay(Crdt &c, bool verify_full_log) {
+  auto header = read_at(logfd, 0, 16);
+
+  if (header.empty()) {
     generation = random_id();
-      upgraded += disk::record(
-      atomic_file(dir + "/operations.legacy.log", legacy);
+    atomic_file(dir + "/operations.log", log_header(generation));
+    check(close(logfd) == 0, "close empty log");
     logfd = -1;
+    open_log();
+    header = log_header(generation);
+  }
+
+  if (header.substr(0, 8) != "CELOG002") {
+    if (header.substr(0, 4) != "CEDT" &&
+        !(header.size() < 4 && std::string("CEDT").starts_with(header)))
+      throw StorageError("invalid log identity header");
+    // One-time, atomic upgrade. Keep the original bytes as an explicit backup.
+
+    auto legacy = bounded_file(dir + "/operations.log"), rest = legacy;
+
+    std::vector<Operation> ops;
+
+    while (!rest.empty()) {
+      auto f = wire::take(rest, true);
+
+      if (!f)
+        break;
+      if (f->type != wire::Type::OP_BATCH)
+        throw StorageError("invalid legacy record");
+      for (auto o : wire::operations(f->payload))
+        ops.push_back(o);
+    }
+    Crdt validated;
+    generation = random_id();
+
+    std::string upgraded = log_header(generation);
+      upgraded += disk::record(
+          wire::frame(wire::Type::OP_BATCH, wire::operations(std::vector<Operation>{o})));
+      atomic_file(dir + "/operations.legacy.log", legacy);
+    atomic_file(dir + "/operations.log", upgraded);
+    logfd = -1;
+    open_log();
     recovery_note = "Upgraded legacy log; original retained as operations.legacy.log";
+  }
     throw StorageError("truncated log identity header");
+  wire::Reader h{header};
+  h.pos = 8;
   if (!generation)
+    throw StorageError("invalid log generation");
         auto n = p.number(4);
+
+        if (n > wire::max_payload || n > payload.size() - p.pos)
         auto batch = wire::operations(payload.substr(p.pos, n));
+        p.pos += n;
           throw StorageError("checkpoint batch count");
+        ops.insert(ops.end(), batch.begin(), batch.end());
       p.end();
       c.restore(ops);
       start = covered;
