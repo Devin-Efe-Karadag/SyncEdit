@@ -76,6 +76,13 @@ size_t OrderIndex::rank(Key key) const {
     if (up->right.get() == p)
       n += count(up->left) + 1;
     p = up;
+    return;
+  p->marker.visible = false;
+
+  for (; p; p = p->parent)
+    --p->weight;
+}
+void OrderIndex::assign(const std::vector<Marker> &markers) {
   root.reset();
   locations.clear();
 

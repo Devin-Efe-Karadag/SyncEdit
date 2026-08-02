@@ -20,3 +20,6 @@ int main() {
 
     if (s.size() > 50 && g() % 2) {
       p = g() % s.size();
+      s.erase(p, 1);
+      r.erase(p);
+    }

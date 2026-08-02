@@ -89,40 +89,96 @@ bool Crdt::receive(const Operation &o) {
     return false;
   remember(o);
   pending.emplace(o.id, o);
+
+  if (nodes.contains(o.ref))
     drain(o);
+  else
     waiting.emplace(o.ref, o.id);
+  return true;
 }
+bool Crdt::settled() const { return pending.empty() && contiguous == history.size(); }
 void Crdt::restore(const std::vector<Operation> &ops) {
+  // Bulk construction avoids replaying all past rope mutations. Historical
   // operations remain available for deduplication and anti-entropy.
+  Crdt fresh;
+
   if (ops.size() > 1000000)
+    throw std::runtime_error("checkpoint operation limit");
   for (auto o : ops) {
+    validate(o);
+
     if (!fresh.history.emplace(o.id, o).second)
+      throw std::runtime_error("duplicate checkpoint operation");
     fresh.clock = std::max(fresh.clock, o.time);
-  for (const auto &[id, o] : fresh.history) {
-    if (id.counter == c + 1) {
-      ++fresh.contiguous;
-    auto p = fresh.history.find(o.ref);
-      throw std::runtime_error("invalid checkpoint dependency");
-  if (fresh.versions.size() > 1024)
-  std::vector<Operation> sorted = ops;
-  });
-    if (o.insert) {
-        fresh.nodes.emplace(o.id, Element{o, false, {}});
-      } else {
-        fresh.waiting.emplace(o.ref, o.id);
-    }
-    if (!o.insert) {
-        fresh.nodes.at(o.ref).deleted = true;
-        fresh.pending.emplace(o.id, o);
-      }
-  std::vector<OrderIndex::Marker> markers;
-  std::vector<OrderIndex::Key> stack{{Id{}, false}};
-    auto key = stack.back();
-    const auto &n = fresh.nodes.at(key.first);
-    markers.push_back({key, show});
-      visible.push_back({key.first, n.op.value});
-      stack.push_back({key.first, true});
-        stack.push_back({it->second, false});
   }
+
+  for (const auto &[id, o] : fresh.history) {
+    auto &c = fresh.versions[id.replica];
+
+    if (id.counter == c + 1) {
+      ++c;
+      ++fresh.contiguous;
+    }
+
+    auto p = fresh.history.find(o.ref);
+
+    if (p != fresh.history.end() && (!p->second.insert || (o.insert && p->second.time >= o.time)))
+      throw std::runtime_error("invalid checkpoint dependency");
+  }
+
+  if (fresh.versions.size() > 1024)
+    throw std::runtime_error("checkpoint replica limit");
+  std::vector<Operation> sorted = ops;
+
+  std::sort(sorted.begin(), sorted.end(), [](const auto &a, const auto &b) {
+    return std::tie(a.time, a.id) < std::tie(b.time, b.id);
+  });
+
+  for (auto o : sorted)
+    if (o.insert) {
+      if (fresh.nodes.contains(o.ref)) {
+        fresh.nodes.emplace(o.id, Element{o, false, {}});
+        fresh.nodes.at(o.ref).children.emplace(o.time, o.id);
+      } else {
+        fresh.pending.emplace(o.id, o);
+        fresh.waiting.emplace(o.ref, o.id);
+      }
+    }
+  for (auto o : sorted)
+    if (!o.insert) {
+      if (fresh.nodes.contains(o.ref))
+        fresh.nodes.at(o.ref).deleted = true;
+      else {
+        fresh.pending.emplace(o.id, o);
+        fresh.waiting.emplace(o.ref, o.id);
+      }
+    }
+  std::vector<OrderIndex::Marker> markers;
+
+  std::vector<Entry> visible;
+
+  std::vector<OrderIndex::Key> stack{{Id{}, false}};
+
+  while (!stack.empty()) {
+    auto key = stack.back();
+    stack.pop_back();
+
+    const auto &n = fresh.nodes.at(key.first);
+
+    bool show = !key.second && key.first != Id{} && !n.deleted;
+    markers.push_back({key, show});
+
+    if (show)
+      visible.push_back({key.first, n.op.value});
+    if (!key.second) {
+      stack.push_back({key.first, true});
+
+      for (auto it = n.children.rbegin(); it != n.children.rend(); ++it)
+        stack.push_back({it->second, false});
+    }
+  }
+  fresh.order.assign(markers);
   fresh.rope.assign(visible);
+  *this = std::move(fresh);
 }
+} // namespace ce
