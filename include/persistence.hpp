@@ -26,3 +26,5 @@ public:
   uint64_t replica = 0, next = 1;
 
   std::string display_name;
+
+  size_t replayed_operations = 0;

@@ -181,6 +181,27 @@ void Persistence::replay(Crdt &c, bool verify_full_log) {
   h.pos = 8;
   if (!generation)
     throw StorageError("invalid log generation");
+  uint64_t start = 16;
+
+  if (!verify_full_log && std::filesystem::exists(dir + "/checkpoint.bin")) {
+      auto bytes = bounded_file(dir + "/checkpoint.bin");
+      if (bytes.substr(0, 8) != "CECKP002")
+      r.pos = 8;
+      if (hc != disk::crc32(std::string_view(bytes).substr(0, 16)) || length > disk::max_file ||
+        throw StorageError("checkpoint header");
+      r.pos = 20 + length;
+        throw StorageError("checkpoint checksum");
+        throw StorageError("checkpoint identity");
+      auto covered = p.number(8);
+      if (p.str() != document)
+      struct stat st{};
+      if (covered < 16 || covered > static_cast<uint64_t>(st.st_size))
+      if (covered > 16) {
+        wire::Reader t{tail};
+          throw StorageError("checkpoint log boundary");
+      auto count = p.number(8);
+        throw StorageError("checkpoint operation limit");
+      ops.reserve(count);
         auto n = p.number(4);
 
         if (n > wire::max_payload || n > payload.size() - p.pos)
