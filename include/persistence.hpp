@@ -28,3 +28,7 @@ public:
   std::string display_name;
 
   size_t replayed_operations = 0;
+
+  bool used_checkpoint = false;
+
+  std::string recovery_note;

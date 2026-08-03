@@ -184,23 +184,52 @@ void Persistence::replay(Crdt &c, bool verify_full_log) {
   uint64_t start = 16;
 
   if (!verify_full_log && std::filesystem::exists(dir + "/checkpoint.bin")) {
+    try {
       auto bytes = bounded_file(dir + "/checkpoint.bin");
+      wire::Reader r{bytes};
+
       if (bytes.substr(0, 8) != "CECKP002")
+        throw StorageError("checkpoint version");
       r.pos = 8;
+
+      auto length = r.number(8), hc = r.number(4);
+
       if (hc != disk::crc32(std::string_view(bytes).substr(0, 16)) || length > disk::max_file ||
+          length + 24 != bytes.size())
         throw StorageError("checkpoint header");
+      auto payload = bytes.substr(20, length);
       r.pos = 20 + length;
+
+      if (r.number(4) != disk::crc32(payload))
         throw StorageError("checkpoint checksum");
+      wire::Reader p{payload};
+
+      if (p.number(8) != replica || p.number(8) != generation)
         throw StorageError("checkpoint identity");
       auto covered = p.number(8);
+
+      auto boundary = p.number(4);
+
       if (p.str() != document)
+        throw StorageError("checkpoint document");
       struct stat st{};
+      check(fstat(logfd, &st) == 0, "checkpoint log stat");
+
       if (covered < 16 || covered > static_cast<uint64_t>(st.st_size))
+        throw StorageError("checkpoint offset");
       if (covered > 16) {
+        auto tail = read_at(logfd, covered - 4, 4);
         wire::Reader t{tail};
+
+        if (t.number(4) != boundary)
           throw StorageError("checkpoint log boundary");
+      }
+
       auto count = p.number(8);
+
+      if (count > 1000000)
         throw StorageError("checkpoint operation limit");
+      std::vector<Operation> ops;
       ops.reserve(count);
         auto n = p.number(4);
 
