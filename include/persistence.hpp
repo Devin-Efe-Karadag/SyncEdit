@@ -32,3 +32,6 @@ public:
   bool used_checkpoint = false;
 
   std::string recovery_note;
+  Persistence(const std::string &directory, const std::string &document,
+              const std::string &requested_name = {});
+  ~Persistence();

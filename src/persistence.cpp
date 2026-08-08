@@ -1,8 +1,12 @@
 #include "persistence.hpp"
 #include <array>
+#include <cstdlib>
 #include <fcntl.h>
+#include <filesystem>
 #include <sys/file.h>
+#include <sys/stat.h>
 #include <unistd.h>
+namespace ce {
 namespace disk {
 uint32_t crc32(std::string_view bytes) {
   static constexpr auto table = [] {
@@ -10,38 +14,75 @@ uint32_t crc32(std::string_view bytes) {
 
     for (uint32_t i = 0; i < 256; ++i) {
       auto c = i;
+
+      for (int j = 0; j < 8; ++j)
         c = (c >> 1) ^ ((c & 1) ? 0xedb88320U : 0);
       t[i] = c;
+    }
+
     return t;
   }();
   uint32_t crc = 0xffffffffU;
+
+  for (unsigned char ch : bytes)
     crc = table[(crc ^ ch) & 255] ^ (crc >> 8);
   return crc ^ 0xffffffffU;
+}
 std::string record(const std::string &p) {
   if (p.size() > wire::max_payload + 12)
+    throw StorageError("record too large");
   wire::Writer w;
   w.number(0x43454c52, 4);
+  w.number(p.size(), 4);
   w.number(crc32(w.data), 4);
   w.number(crc32(p), 4);
+
+  return w.data;
 }
+} // namespace disk
 namespace {
+std::string local_name() {
   const char *candidate = std::getenv("USER");
+
+  if (!candidate || !*candidate)
     candidate = std::getenv("LOGNAME");
+  std::string name = candidate && *candidate ? candidate : "peer";
+
   if (name.size() > 64)
+    name.resize(64);
   for (char &c : name)
+    if (static_cast<unsigned char>(c) < 32 || static_cast<unsigned char>(c) > 126)
       c = '_';
+  return name;
 }
+std::string bounded_file(const std::string &path) {
   if (std::filesystem::file_size(path) > disk::max_file)
+    throw StorageError("storage file exceeds limit");
   return read_file(path);
-std::string read_at(int fd, uint64_t pos, size_t length) {
-  size_t done = 0;
-    auto n = pread(fd, data.data() + done, length - done, static_cast<off_t>(pos + done));
-      continue;
-    if (!n)
-    done += static_cast<size_t>(n);
-  data.resize(done);
 }
+std::string read_at(int fd, uint64_t pos, size_t length) {
+  std::string data(length, '\0');
+
+  size_t done = 0;
+
+  while (done < length) {
+    auto n = pread(fd, data.data() + done, length - done, static_cast<off_t>(pos + done));
+
+    if (n < 0 && errno == EINTR)
+      continue;
+    check(n >= 0, "read operation log");
+
+    if (!n)
+      break;
+    done += static_cast<size_t>(n);
+  }
+  data.resize(done);
+
+  return data;
+}
+std::string log_header(uint64_t generation) {
   wire::Writer w;
+  w.data = "CELOG002";
   w.number(generation, 8);
 
   return w.data;
@@ -78,14 +119,22 @@ Persistence::Persistence(const std::string &d, const std::string &doc,
         if (c < 32 || c > 126)
           throw StorageError("invalid display name");
       if (!requested_name.empty() && display_name != requested_name)
+        throw StorageError("local replica name does not match the selected profile");
     } else {
       display_name = requested_name.empty() ? local_name() : requested_name;
+      atomic_file(dir + "/display_name", display_name);
     }
     open_log();
+  } catch (...) {
     if (logfd >= 0)
+      close(logfd);
     if (lockfd >= 0)
+      close(lockfd);
     throw;
+  }
 }
+void Persistence::open_log() {
+  logfd = open((dir + "/operations.log").c_str(), O_RDWR | O_CREAT | O_APPEND | O_CLOEXEC, 0600);
   check(logfd >= 0, "log open");
 }
 Persistence::~Persistence() {
@@ -165,20 +214,30 @@ void Persistence::replay(Crdt &c, bool verify_full_log) {
         ops.push_back(o);
     }
     Crdt validated;
+    validated.restore(ops);
     generation = random_id();
 
     std::string upgraded = log_header(generation);
+
+    for (auto o : ops)
       upgraded += disk::record(
           wire::frame(wire::Type::OP_BATCH, wire::operations(std::vector<Operation>{o})));
+    if (!std::filesystem::exists(dir + "/operations.legacy.log"))
       atomic_file(dir + "/operations.legacy.log", legacy);
     atomic_file(dir + "/operations.log", upgraded);
+    check(close(logfd) == 0, "close legacy log");
     logfd = -1;
     open_log();
+    header = log_header(generation);
     recovery_note = "Upgraded legacy log; original retained as operations.legacy.log";
   }
+
+  if (header.size() != 16)
     throw StorageError("truncated log identity header");
   wire::Reader h{header};
   h.pos = 8;
+  generation = h.number(8);
+
   if (!generation)
     throw StorageError("invalid log generation");
   uint64_t start = 16;
@@ -231,13 +290,19 @@ void Persistence::replay(Crdt &c, bool verify_full_log) {
         throw StorageError("checkpoint operation limit");
       std::vector<Operation> ops;
       ops.reserve(count);
+
+      while (ops.size() < count) {
         auto n = p.number(4);
 
         if (n > wire::max_payload || n > payload.size() - p.pos)
+          throw StorageError("checkpoint batch length");
         auto batch = wire::operations(payload.substr(p.pos, n));
         p.pos += n;
+
+        if (batch.empty() || batch.size() > count - ops.size())
           throw StorageError("checkpoint batch count");
         ops.insert(ops.end(), batch.begin(), batch.end());
+      }
       p.end();
       c.restore(ops);
       start = covered;
@@ -251,25 +316,43 @@ void Persistence::replay(Crdt &c, bool verify_full_log) {
       used_checkpoint = false;
     }
   }
+  replay_records(c, start);
   uint64_t recovered = 1;
+
+  auto it = c.operations().lower_bound({replica, 0});
+
   while (it != c.operations().end() && it->first.replica == replica) {
+    recovered = std::max(recovered, it->first.counter + 1);
     ++it;
+  }
   counter(recovered);
+}
 void Persistence::append(const Operation &o) {
+  auto payload = wire::frame(wire::Type::OP_BATCH, wire::operations(std::vector<Operation>{o}));
+
   auto record = disk::record(payload);
+
+  if (offset + record.size() > disk::max_file)
     throw StorageError("log size limit");
+  write_all(logfd, record);
   check(fdatasync(logfd) == 0, "sync operation log");
   offset += record.size();
+  boundary_crc = disk::crc32(payload);
 }
 void Persistence::counter(uint64_t n) {
+  next = n;
   atomic_file(dir + "/counter", std::to_string(n));
 }
+void Persistence::snapshot(const std::string &s) { atomic_file(dir + "/snapshot.txt", s); }
 void Persistence::checkpoint(const Crdt &c, bool force) {
   if (!force && c.operations().size() - checkpoint_count < 2048)
+    return;
   wire::Writer p;
   p.number(replica, 8);
+  p.number(generation, 8);
   p.number(offset, 8);
   p.number(boundary_crc, 4);
+  p.str(document);
   p.number(c.operations().size(), 8);
 
   std::vector<Operation> batch;
