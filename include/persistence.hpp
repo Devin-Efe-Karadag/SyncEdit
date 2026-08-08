@@ -35,3 +35,6 @@ public:
   Persistence(const std::string &directory, const std::string &document,
               const std::string &requested_name = {});
   ~Persistence();
+  Persistence(const Persistence &) = delete;
+  Persistence &operator=(const Persistence &) = delete;
+  void replay(Crdt &c, bool verify_full_log = false);
