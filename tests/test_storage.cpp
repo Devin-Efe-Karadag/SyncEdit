@@ -39,3 +39,23 @@ int main() {
       old += disk::record(payload);
     }
     atomic_file(dir + "/operations.log", old);
+    Document restored(dir, "notes", true);
+    check(restored.crdt.text() == "ab", "old protocol operation log recovery");
+  }
+  check(original.size() == 16 + 2 * 72, "record layout");
+  // Every possible interrupted write boundary of the last record.
+
+  for (size_t cut = first; cut < original.size(); ++cut) {
+    atomic_file(dir + "/operations.log", original.substr(0, cut));
+    Document d(dir, "notes");
+    check(d.crdt.text() == "a" && d.store.next == 2, "torn write retains committed prefix");
+    check(fs::file_size(dir + "/operations.log") == first, "tail repaired");
+  }
+  // Every byte in a complete record, including header, payload, CRC.
+
+  for (size_t pos = 16; pos < first; ++pos) {
+    auto corrupt = original;
+    corrupt[pos] ^= 1;
+    atomic_file(dir + "/operations.log", corrupt);
+    rejects([&] { Document d(dir, "notes"); });
+    check(read_file(dir + "/operations.log") == corrupt, "corrupt complete log not truncated");
