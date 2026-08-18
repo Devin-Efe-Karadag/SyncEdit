@@ -336,6 +336,24 @@ std::string select_profile(const std::filesystem::path &root) {
 
       return name;
     }
+
+    auto selected = numbered(choice, profiles);
+
+    if (!selected.empty())
+      return selected;
+    std::cout << "Choose a listed number or N.\n";
+  }
+}
+std::filesystem::path document_path(const std::filesystem::path &root, const std::string &profile,
+                                    const std::string &name) {
+  auto path = root / "profiles" / encode_component(profile) / "documents";
+
+  auto encoded = encode_component(name);
+
+  for (size_t i = 0; i < encoded.size(); i += 120)
+    path /= encoded.substr(i, 120);
+  return path / "state";
+}
 // Removal is a same-filesystem rename, retaining logs for manual recovery.
 bool remove_local(const std::filesystem::path &root, const std::string &profile,
                   const std::string &document = {}) {

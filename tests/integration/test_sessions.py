@@ -59,3 +59,49 @@ with tempfile.TemporaryDirectory() as directory:
         expect('Documents for bob')
         send('l\n')
         expect('Logged out.')
+        send('1\n')
+        expect('Documents for alice')
+        expect('1. notes')
+        profile_path = pathlib.Path(directory) / 'syncedit/profiles' / 'alice'.encode().hex()
+        with open(profile_path / 'profile.lock', 'a') as busy:
+            fcntl.flock(busy, fcntl.LOCK_SH | fcntl.LOCK_NB)
+            send('d\n')
+            expect('Export plain text first?')
+            send('n\n')
+            expect('Type REMOVE')
+            send('REMOVE\n')
+            expect('profile is in use')
+            expect('Documents for alice')
+            assert profile_path.exists()
+        send('r\n')
+        expect('Document number to remove:')
+        send('1\n')
+        expect('Export plain text first?')
+        send('n\n')
+        expect('Type REMOVE')
+        expect('Removed locally.')
+        root = pathlib.Path(directory) / 'syncedit'
+        assert not list((root / 'profiles' / 'alice'.encode().hex()).rglob('document'))
+        expect('Document name:')
+        expect('Ctrl-L log out')
+        time.sleep(.2)
+        expect('Documents for alice')
+        expect('Export plain text first?')
+        expect('Type REMOVE')
+        expect('Removed locally.')
+        assert not (root / 'profiles' / 'alice'.encode().hex()).exists()
+        assert (root / 'profiles' / 'bob'.encode().hex()).exists()
+        assert sorted(p.read_text() for p in (root / 'exports').rglob('document.txt')) == ['hello', 'keep this too']
+        send('q\n')
+        assert p.wait(timeout=10) == 0
+        assert len(list((root / 'profiles').rglob('profile_name'))) == 1
+        result = subprocess.run([sys.argv[1], '--as', 'alice'], env=env,
+                                capture_output=True, timeout=10)
+        assert result.returncode != 0
+    finally:
+        if p.poll() is None:
+            p.kill()
+            p.wait()
+        os.close(master)
+        os.close(slave)
+print('Profile creation, document close/reopen, logout, switching and isolation passed')
