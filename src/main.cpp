@@ -363,14 +363,39 @@ bool remove_local(const std::filesystem::path &root, const std::string &profile,
 
   std::cout << "Remove " << (document.empty() ? "profile " : "document ")
             << (document.empty() ? profile : document) << " from profile " << profile << "?\n"
+            << "Other peers keep their copies and synchronized edits.\n"
+            << "Some local edits may not have reached them. Data goes to the recovery folder.\n";
+  auto option = ask("Export plain text first? [Y/n, Enter = yes]: ");
+
+  if (!std::cin)
+    return false;
+  bool export_text = option.empty() || option == "y" || option == "Y";
+
+  if (!export_text && option != "n" && option != "N")
+    return false;
+  if (ask("Type REMOVE to confirm (anything else cancels): ") != "REMOVE")
+    return false;
+  ProfileLock lock(profile_dir, true);
+
+  if (!std::filesystem::exists(target))
     throw std::runtime_error("local data no longer exists");
   // Refuse symlinked data: export and rename must remain inside the selected profile.
+
+  if (std::filesystem::canonical(profile_dir) !=
       std::filesystem::absolute(profile_dir).lexically_normal())
+    throw std::runtime_error("cannot remove a symlinked profile");
   if (std::filesystem::canonical(target) != std::filesystem::absolute(target).lexically_normal())
+    throw std::runtime_error("cannot remove symlinked document data");
   for (const auto &entry : std::filesystem::recursive_directory_iterator(target))
+    if (entry.is_symlink())
       throw std::runtime_error("cannot remove symlinked data");
+  auto names = document.empty() ? documents_at(root, profile) : std::vector<std::string>{document};
+
   std::vector<std::unique_ptr<ce::Document>> opened;
+
+  for (const auto &name : names)
     opened.push_back(
+        std::make_unique<ce::Document>(document_path(root, profile, name).string(), name, true));
   auto token = std::to_string(ce::random_id());
 
   auto recovery = root / "recovery" / token;
