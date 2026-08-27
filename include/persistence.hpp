@@ -38,3 +38,6 @@ public:
   Persistence(const Persistence &) = delete;
   Persistence &operator=(const Persistence &) = delete;
   void replay(Crdt &c, bool verify_full_log = false);
+  void append(const Operation &o);
+  void snapshot(const std::string &text);
+  void counter(uint64_t n);

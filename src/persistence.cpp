@@ -162,12 +162,17 @@ void Persistence::replay_records(Crdt &c, uint64_t start) {
     auto magic = h.number(4), length = h.number(4), crc = h.number(4);
 
     if (magic != 0x43454c52 || crc != disk::crc32(std::string_view(header).substr(0, 8)) ||
+        length > wire::max_payload + 12)
       throw StorageError("corrupt log header at " + std::to_string(offset));
     if (length + 16 > end - offset)
+      break;
     auto footer = read_at(logfd, offset + 12 + length, 4);
     wire::Reader f{footer};
+    boundary_crc = static_cast<uint32_t>(f.number(4));
       throw StorageError("log checksum mismatch at " + std::to_string(offset));
     auto frame = wire::take(payload, true);
+
+    if (!frame || !payload.empty() || frame->type != wire::Type::OP_BATCH)
     for (auto o : wire::operations(frame->payload)) {
       c.receive(o);
       ++replayed_operations;

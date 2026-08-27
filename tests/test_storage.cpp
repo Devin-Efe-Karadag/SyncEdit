@@ -59,3 +59,23 @@ int main() {
     atomic_file(dir + "/operations.log", corrupt);
     rejects([&] { Document d(dir, "notes"); });
     check(read_file(dir + "/operations.log") == corrupt, "corrupt complete log not truncated");
+  }
+  atomic_file(dir + "/operations.log", original);
+
+  std::string checkpoint;
+  {
+    Document d(dir, "notes");
+    d.receive({{9, 2}, {9, 1}, 10, 'q', true});
+    d.receive({{9, 3}, {9, 2}, 11, 0, false});
+    d.save(true);
+    checkpoint = read_file(dir + "/checkpoint.bin");
+    d.insert(1, 'x');
+  }
+  {
+    Document d(dir, "notes");
+    check(d.store.used_checkpoint && d.store.replayed_operations == 1,
+          "only checkpoint tail replayed");
+    check(d.crdt.text() == "axb" && d.crdt.buffered() == 2, "checkpoint pending state");
+    d.receive({{9, 1}, {}, 9, 'p', true});
+    check(d.crdt.text() == "paxb" && d.crdt.buffered() == 0, "checkpoint dependencies resolve");
+    d.save(true);

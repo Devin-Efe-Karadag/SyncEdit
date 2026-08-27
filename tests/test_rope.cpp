@@ -23,3 +23,8 @@ int main() {
       s.erase(p, 1);
       r.erase(p);
     }
+
+    size_t probe = g() % (s.size() + 1);
+
+    size_t line = static_cast<size_t>(
+        std::count(s.begin(), s.begin() + static_cast<std::ptrdiff_t>(probe), '\n'));

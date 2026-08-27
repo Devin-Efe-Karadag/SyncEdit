@@ -26,3 +26,12 @@ int main() {
   rejects([&] { take(s); });
   s = bytes;
   s[4] = 1;
+  rejects([&] { take(s); });
+  s = bytes;
+  s[8] = 127;
+  rejects([&] { take(s); });
+  s = bytes;
+  s[7] = 99;
+  rejects([&] { take(s); });
+  rejects([&] { frame(Type::PING, std::string(max_payload + 1, 'x')); });
+  ce::Operation op{{1, 1}, {}, 1, 'a', true};

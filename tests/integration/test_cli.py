@@ -20,3 +20,14 @@ with tempfile.TemporaryDirectory() as directory:
         lines = [p.stderr.readline() for _ in range(3)]
         assert p.poll() is None, lines
         return p, root / label
+
+    def command(p, text):
+        p.stdin.write(text + '\n')
+        p.stdin.flush()
+
+    def stop(p):
+        command(p, 'quit')
+        assert p.wait(timeout=10) == 0, p.stderr.read()
+
+    def wait_for(paths, text):
+        deadline = time.monotonic() + 15
