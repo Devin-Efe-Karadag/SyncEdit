@@ -79,3 +79,23 @@ int main() {
     d.receive({{9, 1}, {}, 9, 'p', true});
     check(d.crdt.text() == "paxb" && d.crdt.buffered() == 0, "checkpoint dependencies resolve");
     d.save(true);
+  }
+  {
+    Document d(dir, "notes", true);
+    check(!d.store.used_checkpoint && d.crdt.text() == "paxb",
+          "full checksum audit bypasses checkpoint");
+  }
+  // Corrupt/truncated checkpoints must recover from the still-intact full log.
+
+  for (size_t cut : {size_t(0), size_t(8), checkpoint.size() - 1}) {
+    atomic_file(dir + "/checkpoint.bin", checkpoint.substr(0, cut));
+    Document d(dir, "notes");
+    check(!d.store.used_checkpoint && d.crdt.text() == "paxb", "truncated checkpoint fallback");
+  }
+  checkpoint[checkpoint.size() / 2] ^= 1;
+  atomic_file(dir + "/checkpoint.bin", checkpoint);
+  {
+    Document d(dir, "notes");
+    check(!d.store.used_checkpoint && d.crdt.text() == "paxb", "checkpoint CRC fallback");
+    d.save(true);
+  }

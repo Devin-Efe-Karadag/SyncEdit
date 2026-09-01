@@ -35,3 +35,12 @@ int main() {
   rejects([&] { take(s); });
   rejects([&] { frame(Type::PING, std::string(max_payload + 1, 'x')); });
   ce::Operation op{{1, 1}, {}, 1, 'a', true};
+
+  auto payload = operations(std::vector<ce::Operation>{op});
+
+  for (size_t n = 0; n < payload.size(); ++n)
+    rejects([&] { operations(payload.substr(0, n)); });
+  ce::check(operations(payload).at(0) == op, "operation roundtrip");
+
+  auto h = hello(Hello{"notes", 9, "alice", 9000, {{9, 2}}});
+  ce::check(hello(h).summary.at(9) == 2, "hello roundtrip");

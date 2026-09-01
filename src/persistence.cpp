@@ -35,6 +35,7 @@ std::string record(const std::string &p) {
   w.number(0x43454c52, 4);
   w.number(p.size(), 4);
   w.number(crc32(w.data), 4);
+  w.data += p;
   w.number(crc32(p), 4);
 
   return w.data;
@@ -166,13 +167,18 @@ void Persistence::replay_records(Crdt &c, uint64_t start) {
       throw StorageError("corrupt log header at " + std::to_string(offset));
     if (length + 16 > end - offset)
       break;
+    auto payload = read_at(logfd, offset + 12, length);
+
     auto footer = read_at(logfd, offset + 12 + length, 4);
     wire::Reader f{footer};
     boundary_crc = static_cast<uint32_t>(f.number(4));
+
+    if (payload.size() != length || boundary_crc != disk::crc32(payload))
       throw StorageError("log checksum mismatch at " + std::to_string(offset));
     auto frame = wire::take(payload, true);
 
     if (!frame || !payload.empty() || frame->type != wire::Type::OP_BATCH)
+      throw StorageError("invalid log frame");
     for (auto o : wire::operations(frame->payload)) {
       c.receive(o);
       ++replayed_operations;

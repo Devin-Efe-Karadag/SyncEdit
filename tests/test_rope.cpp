@@ -28,3 +28,8 @@ int main() {
 
     size_t line = static_cast<size_t>(
         std::count(s.begin(), s.begin() + static_cast<std::ptrdiff_t>(probe), '\n'));
+    ce::check(r.line_of(probe) == line, "newline rank");
+
+    size_t start = probe;
+
+    while (start && s[start - 1] != '\n')

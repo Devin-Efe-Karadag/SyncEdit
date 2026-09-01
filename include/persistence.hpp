@@ -41,3 +41,6 @@ public:
   void append(const Operation &o);
   void snapshot(const std::string &text);
   void counter(uint64_t n);
+  void checkpoint(const Crdt &c, bool force = false);
+};
+} // namespace ce

@@ -31,3 +31,14 @@ with tempfile.TemporaryDirectory() as directory:
 
     def wait_for(paths, text):
         deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            if all((path / 'snapshot.txt').exists() and
+                   (path / 'snapshot.txt').read_text() == text for path in paths):
+                return
+            time.sleep(.1)
+        raise AssertionError('documents did not converge')
+
+    try:
+        alice, alice_path = start('alice', 19101)
+        bob, bob_path = start('bob', 19102, '--join', '127.0.0.1:19101')
+        command(alice, 'insert 0 hello')
