@@ -1,3 +1,52 @@
+#!/usr/bin/env python3
+"""Real processes, TCP fault injection, crash recovery, and ncurses PTY smoke test."""
+import os, sys, tempfile, subprocess, socket, time, struct, pathlib, signal, pty, fcntl, termios
+BIN=os.path.abspath(sys.argv[1]); root=pathlib.Path(tempfile.mkdtemp(prefix='syncedit-integration-'))
+processes=[]
+def port():
+    with socket.socket() as s: s.bind(('127.0.0.1',0)); return s.getsockname()[1]
+ports=[port() for _ in range(6)]
+def start(i, peers=(), document='notes', headless=True, stdin=None, stdout=None):
+    args=[BIN, document]
+    for j in peers: args += ['--join',f'127.0.0.1:{ports[j]}']
+    err=open(root/f'{i}.stderr','ab')
+    env={**os.environ,'TERM':'xterm-256color','SYNCEDIT_TEST_DATA_DIR':str(root/str(i)),
+         'SYNCEDIT_TEST_LISTEN':f'127.0.0.1:{ports[i]}'}
+    if headless: env['SYNCEDIT_TEST_HEADLESS']='1'
+    p=subprocess.Popen(args,stdin=subprocess.PIPE if stdin is None else stdin,stdout=subprocess.DEVNULL if stdout is None else stdout,stderr=err,env=env)
+    processes.append(p); return p
+
+def command(p,s): p.stdin.write((s+'\n').encode()); p.stdin.flush()
+def snap(i):
+    p=root/str(i)/'snapshot.txt'; return p.read_bytes() if p.exists() else None
+
+def wait(predicate, label, timeout=15):
+    end=time.monotonic()+timeout
+    while time.monotonic()<end:
+        if predicate(): return
+        time.sleep(.05)
+    raise AssertionError(label+' timed out; snapshots='+repr([snap(i) for i in range(3)]))
+def stop(p,kill=False):
+    if p.poll() is None:
+        p.kill() if kill else p.terminate()
+        p.wait(5)
+    if not kill: assert p.returncode==0, p.returncode
+
+def frame(t,payload=b''): return struct.pack('!IHHI',0x43454454,3,t,len(payload))+payload
+def hello(doc='notes',replica=123):
+    b=doc.encode(); name=b'injector'
+    return struct.pack('!H',len(b))+b+struct.pack('!QH',replica,len(name))+name+struct.pack('!HH',9000,0)
+def op(rep,cnt,parent_rep,parent_cnt,stamp,ch,insert=True):
+    return struct.pack('!BQQQQQB',1 if insert else 2,rep,cnt,parent_rep,parent_cnt,stamp,ord(ch) if ch else 0)
+def inject(ops):
+    with socket.create_connection(('127.0.0.1',ports[0])) as s:
+        s.sendall(frame(1,hello()));time.sleep(.1)
+        payload=frame(3,struct.pack('!H',len(ops))+b''.join(ops))
+        # Fragment across headers and operations, exercise partial reads.
+        for k in range(0,len(payload),7): s.sendall(payload[k:k+7])
+        time.sleep(.3)
+try:
+    operations=[op(123,3,123,1,3,'',False),op(123,2,123,1,2,'Y'),op(123,1,0,0,1,'X')]
     inject(operations)
     wait(lambda:snap(0)==snap(1)==snap(2) and snap(0) and b'Y' in snap(0) and len(snap(0))==30,'reordered dependency forwarding')
     before=snap(0);inject(operations);time.sleep(1.3);assert snap(0)==snap(1)==snap(2)==before
