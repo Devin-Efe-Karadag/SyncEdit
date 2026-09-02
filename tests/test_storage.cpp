@@ -99,3 +99,23 @@ int main() {
     check(!d.store.used_checkpoint && d.crdt.text() == "paxb", "checkpoint CRC fallback");
     d.save(true);
   }
+  // Unrenamed checkpoint temporary files are ignored after interruption.
+  atomic_file(dir + "/checkpoint.bin.tmp", "interrupted replacement");
+  {
+    Document d(dir, "notes");
+    check(d.store.used_checkpoint && d.crdt.text() == "paxb", "old committed checkpoint retained");
+  }
+  // An audit detects corruption even in history skipped by normal checkpoint load.
+
+  auto full = read_file(dir + "/operations.log");
+
+  auto bad = full;
+  bad[40] ^= 1;
+  atomic_file(dir + "/operations.log", bad);
+  rejects([&] { Document d(dir, "notes", true); });
+  atomic_file(dir + "/operations.log", full);
+  fs::remove_all(dir);
+  // Existing v1 documents upgrade without changing identity, text or counters.
+  fs::create_directories(dir);
+  atomic_file(dir + "/identity", "42");
+  atomic_file(dir + "/document", "notes");

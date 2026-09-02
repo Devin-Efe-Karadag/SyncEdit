@@ -33,3 +33,7 @@ int main() {
     size_t start = probe;
 
     while (start && s[start - 1] != '\n')
+      --start;
+    ce::check(r.line_start(line) == start, "line start select");
+
+    if (!s.empty()) {

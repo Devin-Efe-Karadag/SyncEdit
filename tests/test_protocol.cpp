@@ -44,3 +44,12 @@ int main() {
 
   auto h = hello(Hello{"notes", 9, "alice", 9000, {{9, 2}}});
   ce::check(hello(h).summary.at(9) == 2, "hello roundtrip");
+  ce::check(hello(h).peer_name == "alice", "hello name roundtrip");
+
+  auto previous = frame(Type::OP_BATCH, payload);
+  previous[5] = 1;
+  rejects([&] {
+    auto copy = previous;
+    take(copy);
+  });
+  ce::check(take(previous, true)->type == Type::OP_BATCH, "legacy disk frames only");

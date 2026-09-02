@@ -46,6 +46,18 @@ def inject(ops):
         for k in range(0,len(payload),7): s.sendall(payload[k:k+7])
         time.sleep(.3)
 try:
+    a=start(0,[1,2]);b=start(1,[0,2]);c=start(2,[0,1])
+    for p,text in [(a,'ALPHA'),(b,'BRAVO'),(c,'CHARLIE')]:command(p,'insert 0 '+text)
+    wait(lambda:snap(0) is not None and snap(0)==snap(1)==snap(2) and len(snap(0))==17,'three concurrent peers')
+    original=snap(0); print('PASS three-peer concurrent convergence')
+    stop(c,True)
+    old=ports[2];ports[2]=port();c=start(2)
+    command(c,'insert 0 OFFLINE');command(a,'insert 0 ONLINE');command(b,'erase 0')
+    wait(lambda:snap(2) is not None and b'OFFLINE' in snap(2),'offline edits')
+    stop(c,True);ports[2]=old;c=start(2,[0,1])
+    wait(lambda:snap(0)==snap(1)==snap(2) and snap(0) and b'OFFLINE' in snap(0) and len(snap(0))==29,'offline reconnect')
+    print('PASS offline editing, reconnect, and SIGKILL log recovery')
+    # Delete-before-insert and child-before-parent, then duplicate entire batch.
     operations=[op(123,3,123,1,3,'',False),op(123,2,123,1,2,'Y'),op(123,1,0,0,1,'X')]
     inject(operations)
     wait(lambda:snap(0)==snap(1)==snap(2) and snap(0) and b'Y' in snap(0) and len(snap(0))==30,'reordered dependency forwarding')
