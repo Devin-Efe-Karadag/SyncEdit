@@ -53,3 +53,12 @@ int main() {
     take(copy);
   });
   ce::check(take(previous, true)->type == Type::OP_BATCH, "legacy disk frames only");
+
+  auto addresses = std::vector<std::string>{"127.0.0.1:9000", "127.0.0.1:9001"};
+  ce::check(peers(peers(addresses)) == addresses, "peer introduction roundtrip");
+  rejects([&] { peers(std::string(1, char(65))); });
+  rejects([&] { peers(peers(addresses) + "x"); });
+  rejects([&] { hello(h + "x"); });
+
+  std::cout << "framing and payload validation passed\n";
+}

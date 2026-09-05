@@ -119,3 +119,23 @@ int main() {
   fs::create_directories(dir);
   atomic_file(dir + "/identity", "42");
   atomic_file(dir + "/document", "notes");
+  Operation a{{42, 1}, {}, 1, 'a', true};
+
+  auto legacy = wire::frame(wire::Type::OP_BATCH, wire::operations(std::vector<Operation>{a}));
+  atomic_file(dir + "/operations.log", legacy);
+  {
+    Document d(dir, "notes");
+    check(d.crdt.text() == "a" && d.store.replica == 42 && d.store.next == 2, "legacy recovery");
+    check(read_file(dir + "/operations.legacy.log") == legacy, "legacy backup");
+    d.insert(1, 'b');
+    d.save(true);
+  }
+  {
+    Document d(dir, "notes");
+    check(d.crdt.text() == "ab" && d.store.used_checkpoint, "upgraded checkpoint recovery");
+  }
+  fs::remove_all(dir);
+
+  std::cout << "CRC, every torn-record boundary, corruption, checkpoint recovery, legacy upgrade "
+               "passed\n";
+}

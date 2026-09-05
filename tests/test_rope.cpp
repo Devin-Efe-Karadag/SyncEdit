@@ -37,3 +37,7 @@ int main() {
     ce::check(r.line_start(line) == start, "line start select");
 
     if (!s.empty()) {
+      size_t at = g() % s.size();
+      ce::check(r.index(r.at(at).id) == at, "stable handle after chunk split");
+    }
+    ce::check(r.size() == s.size() && r.range(0, r.size()) == s, "rope differential");

@@ -53,3 +53,14 @@ with tempfile.TemporaryDirectory() as directory:
         alice, alice_path = start('introduced-alice', 19112, '--join', '127.0.0.1:19111')
         carol, carol_path = start('introduced-carol', 19113, '--join', '127.0.0.1:19111')
         time.sleep(2)
+        stop(bridge)
+        command(alice, 'insert 0 direct')
+        wait_for([alice_path, carol_path], 'direct')
+        stop(carol)
+        stop(alice)
+    finally:
+        for p in processes:
+            if p.poll() is None:
+                p.kill()
+                p.wait()
+print('minimal CLI and remembered join passed')
