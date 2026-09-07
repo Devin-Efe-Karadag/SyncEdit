@@ -1,3 +1,73 @@
+#!/usr/bin/env python3
+"""Seeded four-process fault tests with a complete-operation-set oracle.
+
+TCP proxies drop connections for partitions and delay/duplicate OP_BATCH frames.
+They never invent operations. Successful local edits are captured from durable
+logs before any crash, so convergence alone cannot hide lost acknowledged edits.
+"""
+import asyncio
+import json
+import os
+from pathlib import Path
+import random
+import socket
+import struct
+import sys
+import tempfile
+import zlib
+
+
+def free_port():
+    with socket.socket() as s:
+        s.bind(('127.0.0.1', 0))
+        return s.getsockname()[1]
+
+
+def operations(path):
+    if not path.exists():
+        return {}
+    data = path.read_bytes()
+    assert data[:8] == b'CELOG002'
+    offset, result = 16, {}
+    while len(data) - offset >= 12:
+        magic, length, crc = struct.unpack_from('!III', data, offset)
+        assert magic == 0x43454c52 and zlib.crc32(data[offset:offset+8]) == crc
+        if len(data) < offset + length + 16:
+            break  # A concurrent append is not yet a complete durable record.
+        payload = data[offset+12:offset+12+length]
+        assert zlib.crc32(payload) == struct.unpack_from('!I', data, offset+12+length)[0]
+        magic, version, kind, size = struct.unpack_from('!IHHI', payload)
+        assert (magic, version, kind, size) == (0x43454454, 3, 3, len(payload)-12)
+        count = struct.unpack_from('!H', payload, 12)[0]
+        assert len(payload) == 14 + count * 42
+        for i in range(count):
+            op = struct.unpack_from('!BQQQQQB', payload, 14+i*42)
+            key = op[1:3]
+            assert key not in result or result[key] == op
+            result[key] = op
+        offset += length + 16
+    return result
+
+
+def oracle(ops):
+    """Independent, deliberately simple tree traversal, no production rank index."""
+    children, deleted = {}, set()
+    for key, op in ops.items():
+        if op[0] == 1:
+            children.setdefault(op[3:5], []).append((op[5], key, op[6]))
+        else:
+            deleted.add(op[3:5])
+    for siblings in children.values():
+        siblings.sort(reverse=True)
+    stack = list(reversed(children.get((0, 0), [])))
+    text, visited = bytearray(), set()
+    while stack:
+        _, key, value = stack.pop()
+        assert key not in visited
+        visited.add(key)
+        if key not in deleted:
+            text.append(value)
+        stack.extend(reversed(children.get(key, [])))
     assert len(visited) == sum(op[0] == 1 for op in ops.values())
     assert deleted <= visited
     return bytes(text)
@@ -145,33 +215,67 @@ async def scenario(binary, seed):
             if turn in (4, 5):
                 for link in links:
                     link.partition(False)
+                trace.append([turn, 'full partition'])
             else:
+                link = rng.choice(links)
                 link.partition(rng.random() > .35)
+                trace.append([turn, 'link', links.index(link), link.enabled])
             if turn % 5 == 2:
+                victim = rng.randrange(4)
                 await command(victim, 'checkpoint')
+                await asyncio.sleep(rng.uniform(0, .01))
                 peers[victim].kill()
+                await peers[victim].wait()
                 peers[victim] = None
+                await start(victim)
                 trace.append([turn, 'restart', victim])
+            await asyncio.sleep(.08)
         capture()
+        for link in links:
             link.partition(True)
+        def all_operations():
             return all(operations(root/str(i)/'operations.log') == expected for i in range(4))
+        await wait(all_operations, 'complete operation-set convergence', 45)
         target = oracle(expected)
+        for i in range(4):
             await command(i, 'save')
+        await wait(lambda: all((root/str(i)/'snapshot.txt').exists() and (root/str(i)/'snapshot.txt').read_bytes() == target for i in range(4)), 'oracle text')
         assert sum(link.duplicates for link in links) > 0
+        # A clean checkpoint restart must also preserve the exact operation set.
         for i in range(4):
+            await command(i, 'quit')
         for p in peers:
+            await asyncio.wait_for(p.wait(), 5)
             assert p.returncode == 0
+        peers = [None]*4
         for i in range(4):
+            await start(i)
             await command(i, 'save')
+        await wait(all_operations, 'post-checkpoint operation sets')
         await wait(lambda: all((root/str(i)/'snapshot.txt').read_bytes() == target for i in range(4)), 'post-checkpoint text')
+        print(f'PASS seed={seed}, {len(expected)} operations, four peers, partitions/reordering/duplicates/crashes/checkpoints; {root}', flush=True)
     finally:
+        (root/'trace.json').write_text(json.dumps(trace, indent=2))
         for p in peers:
+            if p and p.returncode is None:
                 p.kill()
+                await p.wait()
         for server in servers:
+            server.close()
             await server.wait_closed()
+        for link in links:
             link.partition(False)
+        await asyncio.gather(*(task for link in links for task in list(link.handlers)), return_exceptions=True)
         for err in errors:
+            err.close()
         for path in root.glob('*.stderr'):
+            if path.stat().st_size:
                 print(path.read_text(), file=sys.stderr)
+
+
+async def main():
     for seed in (7, 71, 2026):
+        await scenario(os.path.abspath(sys.argv[1]), seed)
+
 if __name__ == '__main__':
+    asyncio.run(main())
