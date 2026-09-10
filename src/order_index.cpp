@@ -76,6 +76,21 @@ size_t OrderIndex::rank(Key key) const {
     if (up->right.get() == p)
       n += count(up->left) + 1;
     p = up;
+  }
+
+  return n;
+}
+  auto p = locations.at(key);
+  while (p->parent) {
+    if (up->right.get() == p)
+    p = up;
+  return n;
+size_t OrderIndex::after(Id id) const {
+}
+  auto [a, b] = split(std::move(root), rank(beforeKey));
+  a = merge(std::move(a), node({{id, true}, false}));
+}
+  auto p = locations.at({id, false});
     return;
   p->marker.visible = false;
 

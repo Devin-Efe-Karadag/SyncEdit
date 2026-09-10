@@ -73,8 +73,17 @@ void Crdt::drain(Operation first) {
       size_t pos = order.before(before);
       order.insert(o.id, before);
       rope.insert(pos, {o.id, o.value});
+
+      auto [begin, end] = waiting.equal_range(o.id);
+
+      for (auto w = begin; w != end; ++w)
         ready.push_back(history.at(w->second));
+      waiting.erase(begin, end);
+    } else {
+      auto &n = nodes.at(o.ref);
+
       if (!n.deleted) {
+        rope.erase(order.before({o.ref, false}));
         order.hide(o.ref);
         n.deleted = true;
       }

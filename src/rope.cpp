@@ -144,6 +144,30 @@ bool Rope::append_chunk(Ptr &p, Entry e) {
 }
 void Rope::insert(size_t i, Entry e) {
   if (i > size() || locations.contains(e.id))
+    throw std::out_of_range("rope insert");
+  auto [a, b] = split(std::move(root), i);
+
+  if (!append_chunk(a, e))
+    a = merge(std::move(a), node({e}));
+  root = merge(std::move(a), std::move(b));
+}
+void Rope::erase(size_t i) {
+  auto id = at(i).id;
+
+  auto [a, b] = split(std::move(root), i);
+
+  auto [gone, c] = split(std::move(b), 1);
+  locations.erase(id);
+  root = merge(std::move(a), std::move(c));
+}
+void Rope::collect(const Node *p, size_t i, size_t n, std::string &s) {
+  if (!p || !n)
+    return;
+  size_t l = len(p->left), c = p->chunk.size();
+
+  if (i < l) {
+    size_t take = std::min(n, l - i);
+    collect(p->left.get(), i, take, s);
     n -= take;
     i = l;
   }

@@ -41,3 +41,7 @@ int main() {
       ce::check(r.index(r.at(at).id) == at, "stable handle after chunk split");
     }
     ce::check(r.size() == s.size() && r.range(0, r.size()) == s, "rope differential");
+  }
+
+  std::cout << "10000 randomized chunk-rope edits passed\n";
+}
