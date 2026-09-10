@@ -80,17 +80,34 @@ size_t OrderIndex::rank(Key key) const {
 
   return n;
 }
+size_t OrderIndex::before(Key key) const {
   auto p = locations.at(key);
+
+  size_t n = weight(p->left);
+
   while (p->parent) {
+    auto up = p->parent;
+
     if (up->right.get() == p)
+      n += weight(up->left) + up->marker.visible;
     p = up;
+  }
+
   return n;
+}
 size_t OrderIndex::after(Id id) const {
+  return before({id, false}) + locations.at({id, false})->marker.visible;
 }
+void OrderIndex::insert(Id id, Key beforeKey) {
   auto [a, b] = split(std::move(root), rank(beforeKey));
+  a = merge(std::move(a), node({{id, false}, true}));
   a = merge(std::move(a), node({{id, true}, false}));
+  root = merge(std::move(a), std::move(b));
 }
+void OrderIndex::hide(Id id) {
   auto p = locations.at({id, false});
+
+  if (!p->marker.visible)
     return;
   p->marker.visible = false;
 

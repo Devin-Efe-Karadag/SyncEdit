@@ -41,11 +41,27 @@ class Crdt {
 public:
   Rope rope;
   uint64_t clock = 0;
+  Crdt();
   void preflight(const Operation &o) const;
+
+  bool receive(const Operation &o);
+
   bool contains(Id id) const { return history.contains(id); }
+
+  const auto &operations() const { return history; }
   Vector summary() const { return versions; }
+  // Cursor has left affinity: stay immediately after the same predecessor,
+  // including its logical location if that predecessor is deleted.
   Id anchor(size_t cursor) const { return cursor ? rope.at(cursor - 1).id : Id{}; }
+
+  size_t resolve(Id anchor) const { return order.after(anchor); }
   void restore(const std::vector<Operation> &operations);
+
+  bool settled() const;
+
   size_t buffered() const { return pending.size(); }
+
+  std::string text() const { return rope.range(0, rope.size()); }
 };
+void validate(const Operation &o);
 } // namespace ce
