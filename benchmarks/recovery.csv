@@ -1,3 +1,4 @@
 operations,full_replay_ms,checkpoint_ms,tail_operations
 1000,2.08912,0.890454,1
 10000,25.678,8.79801,1
+50000,148.442,51.3011,1

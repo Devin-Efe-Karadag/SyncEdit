@@ -32,3 +32,6 @@ add_custom_target(sanitizer-test COMMAND ${CMAKE_COMMAND} -S ${CMAKE_SOURCE_DIR}
 target_link_libraries(edit_benchmark PRIVATE core)
 
 add_test(NAME randomized_network COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/integration/test_randomized.py $<TARGET_FILE:syncedit>)
+set_tests_properties(randomized_network PROPERTIES TIMEOUT 180)
+add_executable(recovery_benchmark benchmarks/recovery_benchmark.cpp)
+target_link_libraries(recovery_benchmark PRIVATE core)
