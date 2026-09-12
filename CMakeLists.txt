@@ -29,6 +29,8 @@ set_tests_properties(sessions PROPERTIES TIMEOUT 60)
 add_test(NAME integration COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/integration/test_network.py $<TARGET_FILE:syncedit>)
 set_tests_properties(integration PROPERTIES TIMEOUT 90)
 add_custom_target(sanitizer-test COMMAND ${CMAKE_COMMAND} -S ${CMAKE_SOURCE_DIR} -B ${CMAKE_SOURCE_DIR}/build-sanitize -DSANITIZE=ON -DCMAKE_BUILD_TYPE=Debug COMMAND ${CMAKE_COMMAND} --build ${CMAKE_SOURCE_DIR}/build-sanitize -j2 COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_SOURCE_DIR}/build-sanitize --output-on-failure)
+
+add_executable(edit_benchmark benchmarks/edit_benchmark.cpp)
 target_link_libraries(edit_benchmark PRIVATE core)
 
 add_test(NAME randomized_network COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/integration/test_randomized.py $<TARGET_FILE:syncedit>)
