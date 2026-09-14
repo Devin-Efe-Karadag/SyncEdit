@@ -1,66 +1,78 @@
 # SyncEdit
 
-SyncEdit is a terminal text editor I wrote to experiment with collaborative
-editing without a server. Every instance is both an ncurses editor and a TCP
-peer. You can keep typing while disconnected, then exchange the missing edits
-when the connection comes back.
+SyncEdit is a small ncurses editor that can share a document directly with
+another copy of itself. There is no central document server: every editor is a
+TCP peer, and disconnected peers can keep typing and catch up later.
 
-## Trying it
+## See it work locally
 
-Build it on Linux and open the profile/document menu:
+Build the Linux executable:
 
 ```sh
 sudo apt install build-essential cmake libncurses-dev python3
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build -j2
-./build/syncedit
 ```
 
-To open a document directly:
+Two data directories let one computer pretend to be two users. In terminal A:
 
 ```sh
-./build/syncedit notes
+XDG_DATA_HOME=/tmp/syncedit-alice ./build/syncedit notes
 ```
 
-Press `Ctrl-P` to see the address the editor is listening on. A second peer can
-join with:
+Create a profile when prompted. The editor normally listens on port 9000;
+`Ctrl-P` shows the actual address.
+
+In terminal B:
 
 ```sh
-./build/syncedit notes --join peer.example.com:9000
+XDG_DATA_HOME=/tmp/syncedit-bob \
+  ./build/syncedit notes --join 127.0.0.1:9000
 ```
 
-The address is remembered, so it is normally only needed the first time.
+Give this copy a different profile. Text typed in either window should appear
+in the other. To try the offline case, close Bob with `Ctrl-Q`, edit with
+Alice, then run Bob's command again.
 
-## What is being synchronized
+For two real machines, replace `127.0.0.1` with the first machine's reachable
+IPv4 address and allow its listening port through the firewall. If 9000 is
+occupied, SyncEdit tries the rest of the range through 9099.
 
-Edits do not contain character offsets. Each inserted character gets a stable
-ID and points to another element in an RGA-style sequence CRDT. Deletes leave a
-tombstone, concurrent inserts are sorted the same way by every peer, and an
-operation that arrives before its dependency waits until that dependency turns
-up. The visible characters are kept in a rope so the editor does not have to
-walk the entire CRDT for normal cursor movement.
+## Controls
 
-Peers compare version vectors and send batches of operations the other side is
-missing. New operations are also forwarded to connected peers, and the version
-check repeats periodically to repair missed updates. This is what lets several
-copies converge after offline editing or a process restart.
+- Arrow keys and Page Up/Page Down move around.
+- Enter inserts a line; Backspace and Delete remove text.
+- `Ctrl-S` exports the current document.
+- `Ctrl-P` opens connection details and the peer list.
+- `Ctrl-Q` closes the document. `Ctrl-L` logs out.
 
-Accepted operations go into a checksummed append-only log before they are
-shared. Snapshots are plain-text exports; checkpoints make startup faster but
-can be discarded and rebuilt from the log. Files live under
-`$XDG_DATA_HOME/syncedit`, or `~/.local/share/syncedit` when that variable
-is not set.
+## Why simultaneous edits do not overwrite each other
 
-The editor keys are close to nano: arrows and Page Up/Down move, Enter inserts
-a newline, Backspace/Delete remove text, `Ctrl-S` saves, `Ctrl-P` shows peers,
-`Ctrl-Q` closes the document, and `Ctrl-L` logs out.
+Peers exchange edit operations instead of whole file versions. An inserted
+character receives a stable ID and a place in an RGA-style sequence CRDT.
+Concurrent inserts can therefore arrive in different orders and still settle
+into the same document. Deletes leave tombstones, and an operation waits if
+the character it depends on has not arrived yet.
 
-Run the test suite with:
+A version vector tells two peers which operations each is missing. Fresh edits
+are forwarded immediately, and periodic comparisons repair missed messages.
+The visible characters also live in a rope so routine cursor movement does not
+walk the entire CRDT.
+
+## Files on disk
+
+An accepted operation reaches a checksummed append-only log before it is sent
+to peers. Checkpoints shorten startup, but the log is enough to rebuild the
+document. Profiles and documents are kept in `$XDG_DATA_HOME/syncedit`, or
+`~/.local/share/syncedit` when that variable is unset.
 
 ```sh
 ctest --test-dir build --output-on-failure
 ```
 
-SyncEdit handles printable ASCII and newlines and is intended for small files
-on trusted networks. There is no encryption, authentication, undo, or shared
-cursor display.
+Those tests include concurrent processes, reconnects, reordered delivery,
+recovery and randomized network faults.
+
+The current editor is aimed at small files on trusted networks. It handles
+printable ASCII and newlines; encryption, authentication, undo and shared
+cursor display are not implemented.
